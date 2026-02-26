@@ -91,6 +91,11 @@
           "default": true,
           "description": "Show line-level gutter icons"
         },
+        "filePrWarning.showFileBadge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show file-level badge for PR status in the explorer"
+        },
         "filePrWarning.excludeDraftPRs": {
           "type": "boolean",
           "default": false,

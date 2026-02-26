@@ -26,6 +26,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
         files(first: 100) {
           pageInfo {
             hasNextPage
+            endCursor
           }
           nodes {
             path
@@ -48,7 +49,7 @@ export interface GraphQLPRNode {
   headRefName: string;
   author: { login: string } | null;
   files: {
-    pageInfo: { hasNextPage: boolean };
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
     nodes: { path: string }[];
   };
 }
@@ -71,6 +72,6 @@ export interface GraphQLPRResponse {
 export interface RESTFileEntry {
   sha: string;
   filename: string;
-  status: string;
+  status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged';
   patch?: string;
 }
