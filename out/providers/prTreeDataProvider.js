@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PRTreeDataProvider = exports.PRTreeItem = void 0;
 const vscode = __importStar(require("vscode"));
+const prColors_1 = require("../core/prColors");
 class PRTreeItem extends vscode.TreeItem {
     prInfo;
     constructor(prInfo, lineRanges) {
@@ -53,22 +54,14 @@ class PRTreeItem extends vscode.TreeItem {
             lines.push(`Modified lines: ${lineRanges}\n\n`);
         }
         this.tooltip = new vscode.MarkdownString(lines.join(''));
-        const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
-        const isStale = Date.now() - new Date(prInfo.updatedAt).getTime() > twoWeeksMs;
-        let iconColor;
-        if (prInfo.isDraft) {
-            iconColor = new vscode.ThemeColor('descriptionForeground');
-        }
-        else if (isStale) {
-            iconColor = new vscode.ThemeColor('disabledForeground');
-        }
-        else if (prInfo.reviewDecision === 'APPROVED') {
-            iconColor = new vscode.ThemeColor('terminal.ansiGreen');
-        }
-        else {
-            iconColor = new vscode.ThemeColor('terminal.ansiCyan');
-        }
-        this.iconPath = new vscode.ThemeIcon('git-pull-request', iconColor);
+        const THEME_COLOR = {
+            approved: 'terminal.ansiGreen',
+            open: 'terminal.ansiCyan',
+            stale: 'disabledForeground',
+            draft: 'descriptionForeground',
+        };
+        const color = (0, prColors_1.getPRColor)(prInfo);
+        this.iconPath = new vscode.ThemeIcon('git-pull-request', new vscode.ThemeColor(THEME_COLOR[color]));
         this.command = {
             command: 'vscode.open',
             title: 'Open PR',

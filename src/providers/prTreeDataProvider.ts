@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { PRIndex } from '../core/prIndex';
 import { PRInfo } from '../core/types';
+import { getPRColor } from '../core/prColors';
 
 export class PRTreeItem extends vscode.TreeItem {
   constructor(public readonly prInfo: PRInfo, lineRanges?: string) {
@@ -21,21 +22,17 @@ export class PRTreeItem extends vscode.TreeItem {
     }
     this.tooltip = new vscode.MarkdownString(lines.join(''));
 
-    const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
-    const isStale = Date.now() - new Date(prInfo.updatedAt).getTime() > twoWeeksMs;
-
-    let iconColor: vscode.ThemeColor | undefined;
-    if (prInfo.isDraft) {
-      iconColor = new vscode.ThemeColor('descriptionForeground');
-    } else if (isStale) {
-      iconColor = new vscode.ThemeColor('disabledForeground');
-    } else if (prInfo.reviewDecision === 'APPROVED') {
-      iconColor = new vscode.ThemeColor('terminal.ansiGreen');
-    } else {
-      iconColor = new vscode.ThemeColor('terminal.ansiCyan');
-    }
-
-    this.iconPath = new vscode.ThemeIcon('git-pull-request', iconColor);
+    const THEME_COLOR: Record<string, string> = {
+      approved: 'terminal.ansiGreen',
+      open: 'terminal.ansiCyan',
+      stale: 'disabledForeground',
+      draft: 'descriptionForeground',
+    };
+    const color = getPRColor(prInfo);
+    this.iconPath = new vscode.ThemeIcon(
+      'git-pull-request',
+      new vscode.ThemeColor(THEME_COLOR[color]),
+    );
 
     this.command = {
       command: 'vscode.open',

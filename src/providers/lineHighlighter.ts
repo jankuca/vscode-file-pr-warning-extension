@@ -1,25 +1,51 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { PRIndex } from '../core/prIndex';
+import { PRInfo } from '../core/types';
+import { PRColor, COLOR_HEX, getMostUrgentColor } from '../core/prColors';
+
+type WidthLevel = 1 | 2 | 3 | 4;
+
+const WIDTH_PX: Record<WidthLevel, number> = { 1: 2, 2: 3, 3: 4, 4: 5 };
+
+function gutterSvgUri(color: string, width: number): vscode.Uri {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><rect fill="${color}" x="2" y="2" width="${width}" height="12" rx="1"/></svg>`;
+  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+}
+
+type VariantKey = `${PRColor}-${WidthLevel}`;
+
+function makeKey(color: PRColor, width: WidthLevel): VariantKey {
+  return `${color}-${width}`;
+}
 
 export class LineHighlighter implements vscode.Disposable {
-  private decorationType: vscode.TextEditorDecorationType;
+  private decorationTypes = new Map<VariantKey, vscode.TextEditorDecorationType>();
   private disposables: vscode.Disposable[] = [];
 
   constructor(
     private prIndex: PRIndex,
-    private extensionUri: vscode.Uri
+    _extensionUri: vscode.Uri,
   ) {
-    this.decorationType = vscode.window.createTextEditorDecorationType({
-      overviewRulerColor: new vscode.ThemeColor('filePrWarning.lineHighlightBorder'),
-      overviewRulerLane: vscode.OverviewRulerLane.Left,
-      gutterIconPath: vscode.Uri.joinPath(this.extensionUri, 'resources', 'gutter-warning.svg'),
-      gutterIconSize: 'contain',
-    });
+    // Pre-create a decoration type for each color × width combination (4×4 = 16)
+    const colors: PRColor[] = ['approved', 'open', 'stale', 'draft'];
+    const widths: WidthLevel[] = [1, 2, 3, 4];
+
+    for (const color of colors) {
+      for (const w of widths) {
+        const key = makeKey(color, w);
+        const dt = vscode.window.createTextEditorDecorationType({
+          overviewRulerColor: COLOR_HEX[color] + '60',
+          overviewRulerLane: vscode.OverviewRulerLane.Left,
+          gutterIconPath: gutterSvgUri(COLOR_HEX[color], WIDTH_PX[w]),
+          gutterIconSize: 'contain',
+        });
+        this.decorationTypes.set(key, dt);
+      }
+    }
 
     this.disposables.push(
       this.prIndex.onDidChangeData(() => this.updateActiveEditor()),
-      vscode.window.onDidChangeActiveTextEditor(() => this.updateActiveEditor())
+      vscode.window.onDidChangeActiveTextEditor(() => this.updateActiveEditor()),
     );
   }
 
@@ -31,72 +57,85 @@ export class LineHighlighter implements vscode.Disposable {
 
     const config = vscode.workspace.getConfiguration('filePrWarning');
     if (!config.get<boolean>('enabled') || !config.get<boolean>('showLineHighlights')) {
-      editor.setDecorations(this.decorationType, []);
+      this.clearDecorations();
       return;
     }
 
     if (editor.document.uri.scheme !== 'file') {
-      editor.setDecorations(this.decorationType, []);
+      this.clearDecorations();
       return;
     }
 
     const prLineData = await this.prIndex.getLineRangesForFile(editor.document.uri);
     if (prLineData.length === 0) {
-      editor.setDecorations(this.decorationType, []);
+      this.clearDecorations();
       return;
     }
 
-    // Build a map of line -> PRs for hover messages
-    const lineMap = new Map<number, { prTitle: string; prNumber: number; prUrl: string; author: string }[]>();
+    // Build per-line data: which PRs touch each line
+    const lineMap = new Map<number, PRInfo[]>();
 
     for (const { pr, ranges } of prLineData) {
       for (const range of ranges) {
         for (let line = range.startLine; line <= range.endLine; line++) {
           const existing = lineMap.get(line) ?? [];
-          existing.push({
-            prTitle: pr.title,
-            prNumber: pr.number,
-            prUrl: pr.url,
-            author: pr.author,
-          });
+          existing.push(pr);
           lineMap.set(line, existing);
         }
       }
     }
 
-    const decorations: vscode.DecorationOptions[] = [];
+    // Group decorations by variant key
+    const grouped = new Map<VariantKey, vscode.DecorationOptions[]>();
 
     for (const [line, prs] of lineMap) {
-      // Lines from diff are 1-based, VSCode ranges are 0-based
       const lineIndex = line - 1;
       if (lineIndex < 0 || lineIndex >= editor.document.lineCount) {
         continue;
       }
 
+      const color = getMostUrgentColor(prs);
+      const widthLevel = Math.min(prs.length, 4) as WidthLevel;
+      const key = makeKey(color, widthLevel);
+
       const hover = new vscode.MarkdownString();
       hover.isTrusted = true;
       for (const pr of prs) {
-        hover.appendMarkdown(`Modified by PR [#${pr.prNumber} ${pr.prTitle}](${pr.prUrl}) by @${pr.author}\n\n`);
+        hover.appendMarkdown(`Modified by PR [#${pr.number} ${pr.title}](${pr.url}) by @${pr.author}\n\n`);
       }
 
-      decorations.push({
+      const deco: vscode.DecorationOptions = {
         range: new vscode.Range(lineIndex, 0, lineIndex, 0),
         hoverMessage: hover,
-      });
+      };
+
+      const list = grouped.get(key);
+      if (list) {
+        list.push(deco);
+      } else {
+        grouped.set(key, [deco]);
+      }
     }
 
-    editor.setDecorations(this.decorationType, decorations);
+    // Apply each variant; clear variants that have no lines this time
+    for (const [key, dt] of this.decorationTypes) {
+      editor.setDecorations(dt, grouped.get(key) ?? []);
+    }
   }
 
   clearDecorations(): void {
     const editor = vscode.window.activeTextEditor;
     if (editor) {
-      editor.setDecorations(this.decorationType, []);
+      for (const dt of this.decorationTypes.values()) {
+        editor.setDecorations(dt, []);
+      }
     }
   }
 
   dispose(): void {
-    this.decorationType.dispose();
+    for (const dt of this.decorationTypes.values()) {
+      dt.dispose();
+    }
     for (const d of this.disposables) {
       d.dispose();
     }
