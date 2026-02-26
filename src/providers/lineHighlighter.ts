@@ -66,7 +66,14 @@ export class LineHighlighter implements vscode.Disposable {
       return;
     }
 
-    const prLineData = await this.prIndex.getLineRangesForFile(editor.document.uri);
+    let prLineData;
+    try {
+      prLineData = await this.prIndex.getLineRangesForFile(editor.document.uri);
+    } catch (e) {
+      console.error('filePrWarning: getLineRangesForFile failed', e);
+      this.clearDecorations();
+      return;
+    }
     if (prLineData.length === 0) {
       this.clearDecorations();
       return;

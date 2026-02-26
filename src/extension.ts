@@ -9,6 +9,7 @@ import { LineHighlighter } from './providers/lineHighlighter';
 import { PRTreeDataProvider } from './providers/prTreeDataProvider';
 import { PRFileDecorationProvider } from './providers/decorationProvider';
 import { registerCommands } from './commands/commands';
+import { timeAgo } from './core/timeAgo';
 
 let gitService: GitService;
 let gitDiffService: GitDiffService;
@@ -120,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (e.affectsConfiguration('filePrWarning.showCodeLens')) {
         // CodeLens provider will re-evaluate on next request
-        codeLensProvider['_onDidChangeCodeLenses'].fire();
+        codeLensProvider.refresh();
       }
 
       if (e.affectsConfiguration('filePrWarning.showLineHighlights')) {
@@ -133,7 +134,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (e.affectsConfiguration('filePrWarning.excludeDraftPRs')) {
         // Data needs re-filtering
-        prIndex['_onDidChangeData'].fire();
+        prIndex.invalidate();
       }
 
       if (e.affectsConfiguration('filePrWarning.enabled')) {
@@ -141,12 +142,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           // Disable everything
           prIndex.stopAutoRefresh();
           lineHighlighter.clearDecorations();
-          codeLensProvider['_onDidChangeCodeLenses'].fire();
+          codeLensProvider.refresh();
         } else {
           // Re-enable
           const interval = updatedConfig.get<number>('refreshIntervalMinutes') ?? 10;
           prIndex.startAutoRefresh(interval);
-          prIndex['_onDidChangeData'].fire();
+          prIndex.invalidate();
         }
       }
     })
@@ -175,21 +176,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     codeLensProvider,
     lineHighlighter
   );
-}
-
-function timeAgo(timestamp: number): string {
-  const diffMs = Date.now() - timestamp;
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-
-  if (diffHour > 0) {
-    return diffHour === 1 ? '1 hour ago' : `${diffHour} hours ago`;
-  }
-  if (diffMin > 0) {
-    return diffMin === 1 ? '1 min ago' : `${diffMin} min ago`;
-  }
-  return 'just now';
 }
 
 export function deactivate(): void {

@@ -103,8 +103,9 @@ export class GitHubClient {
       return [];
     }
 
+    const MAX_PAGES = 30;
     let page = 1;
-    while (true) {
+    while (page <= MAX_PAGES) {
       const url = `${GITHUB_API_URL}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`;
       const response = await fetch(url, {
         headers: {
@@ -137,6 +138,8 @@ export class GitHubClient {
 
       page++;
     }
+
+    return [];
   }
 
   private mapNodeToPR(node: GraphQLPRNode): PRInfo {

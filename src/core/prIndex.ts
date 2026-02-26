@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PRInfo, PRLineData, RepoCacheEntry } from './types';
+import { DiffHunk, PRInfo, PRLineData, RepoCacheEntry } from './types';
 import { extractPatchFromDiff, parsePatchToHunks, mapHunksToLocalFile } from './diffParser';
 import { GitService } from '../git/gitService';
 import { GitDiffService } from '../git/gitDiffService';
@@ -48,6 +48,11 @@ export class PRIndex implements vscode.Disposable {
       clearInterval(this.refreshTimer);
       this.refreshTimer = undefined;
     }
+  }
+
+  /** Signal that consumers should re-read data (e.g. after filter changes). */
+  invalidate(): void {
+    this._onDidChangeData.fire();
   }
 
   getRelativePath(uri: vscode.Uri): string | null {
@@ -241,7 +246,10 @@ export class PRIndex implements vscode.Disposable {
     try {
       await promise;
     } finally {
-      this.fetchingPromises.delete(cacheKey);
+      // Only remove if this is still the current promise (avoid race with force refreshes)
+      if (this.fetchingPromises.get(cacheKey) === promise) {
+        this.fetchingPromises.delete(cacheKey);
+      }
     }
   }
 
@@ -255,12 +263,25 @@ export class PRIndex implements vscode.Disposable {
       }
     }
 
-    const existingEntry = this.cache.get(cacheKey);
+    // Prune stale diffHunkCache entries for files no longer in any PR
+    const existingCache = this.cache.get(cacheKey)?.diffHunkCache;
+    let diffHunkCache: Map<string, Map<number, DiffHunk[]>>;
+    if (existingCache) {
+      diffHunkCache = new Map();
+      for (const [filePath, hunks] of existingCache) {
+        if (fileIndex.has(filePath)) {
+          diffHunkCache.set(filePath, hunks);
+        }
+      }
+    } else {
+      diffHunkCache = new Map();
+    }
+
     this.cache.set(cacheKey, {
       prs,
       fileIndex,
       fetchedAt: Date.now(),
-      diffHunkCache: existingEntry?.diffHunkCache ?? new Map(),
+      diffHunkCache,
     });
 
     this.lastFetchedAt = Date.now();

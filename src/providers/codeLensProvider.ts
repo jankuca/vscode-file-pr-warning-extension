@@ -15,6 +15,11 @@ export class PRCodeLensProvider implements vscode.CodeLensProvider {
     );
   }
 
+  /** Signal VS Code to re-evaluate code lenses. */
+  refresh(): void {
+    this._onDidChangeCodeLenses.fire();
+  }
+
   async provideCodeLenses(
     document: vscode.TextDocument,
     _token: vscode.CancellationToken
