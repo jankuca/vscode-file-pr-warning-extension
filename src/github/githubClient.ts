@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { PRInfo, LineRange } from '../core/types';
+import { PRInfo, DiffHunk } from '../core/types';
 import { OPEN_PRS_QUERY, GraphQLPRResponse, GraphQLPRNode, RESTFileEntry } from './queries';
-import { parsePatchToLineRanges } from '../core/diffParser';
+import { parsePatchToHunks } from '../core/diffParser';
 
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql';
 const GITHUB_API_URL = 'https://api.github.com';
@@ -94,7 +94,7 @@ export class GitHubClient {
     prNumber: number,
     filePath: string,
     token: string
-  ): Promise<LineRange[]> {
+  ): Promise<DiffHunk[]> {
     if (this.isRateLimited()) {
       return [];
     }
@@ -124,7 +124,7 @@ export class GitHubClient {
       return [];
     }
 
-    return parsePatchToLineRanges(file.patch);
+    return parsePatchToHunks(file.patch);
   }
 
   private mapNodeToPR(node: GraphQLPRNode): PRInfo {

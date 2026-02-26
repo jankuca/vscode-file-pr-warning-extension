@@ -23,6 +23,12 @@ export interface LineRange {
   endLine: number;
 }
 
+/** A group of consecutive deleted/modified lines from a patch, with their text content. */
+export interface DiffHunk {
+  oldStartLine: number;   // line number in the base version (used as search hint)
+  deletedLines: string[]; // text content of the `-` lines (prefix stripped)
+}
+
 export interface PRLineData {
   pr: PRInfo;
   ranges: LineRange[];
@@ -32,5 +38,5 @@ export interface RepoCacheEntry {
   prs: PRInfo[];
   fileIndex: Map<string, PRInfo[]>;
   fetchedAt: number;
-  lineDiffCache: Map<string, Map<number, LineRange[]>>; // filePath -> prNumber -> ranges
+  diffHunkCache: Map<string, Map<number, DiffHunk[]>>; // filePath -> prNumber -> hunks
 }

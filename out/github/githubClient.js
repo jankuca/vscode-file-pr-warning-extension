@@ -122,7 +122,7 @@ class GitHubClient {
         if (!file || !file.patch) {
             return [];
         }
-        return (0, diffParser_1.parsePatchToLineRanges)(file.patch);
+        return (0, diffParser_1.parsePatchToHunks)(file.patch);
     }
     mapNodeToPR(node) {
         return {

@@ -82,8 +82,8 @@ function showLinePRs(prIndex) {
             return;
         }
         const relativePath = prIndex.getRelativePath(fileUri);
-        const diffAnchor = relativePath
-            ? `#diff-${crypto.createHash('sha256').update(relativePath).digest('hex')}L${lineNumber}`
+        const fileAnchor = relativePath
+            ? `#diff-${crypto.createHash('sha256').update(relativePath).digest('hex')}`
             : '';
         const items = matchingPRs.map(pr => ({
             label: `#${pr.number} ${pr.title}`,
@@ -95,7 +95,7 @@ function showLinePRs(prIndex) {
             placeHolder: 'Select a PR to open in diff',
         });
         if (selected) {
-            vscode.env.openExternal(vscode.Uri.parse(`${selected.pr.url}/files${diffAnchor}`));
+            vscode.env.openExternal(vscode.Uri.parse(`${selected.pr.url}/files${fileAnchor}`));
         }
     };
 }

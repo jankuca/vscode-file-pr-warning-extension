@@ -66,8 +66,8 @@ function showLinePRs(prIndex: PRIndex) {
     }
 
     const relativePath = prIndex.getRelativePath(fileUri);
-    const diffAnchor = relativePath
-      ? `#diff-${crypto.createHash('sha256').update(relativePath).digest('hex')}L${lineNumber}`
+    const fileAnchor = relativePath
+      ? `#diff-${crypto.createHash('sha256').update(relativePath).digest('hex')}`
       : '';
 
     const items = matchingPRs.map(pr => ({
@@ -82,7 +82,7 @@ function showLinePRs(prIndex: PRIndex) {
     });
 
     if (selected) {
-      vscode.env.openExternal(vscode.Uri.parse(`${selected.pr.url}/files${diffAnchor}`));
+      vscode.env.openExternal(vscode.Uri.parse(`${selected.pr.url}/files${fileAnchor}`));
     }
   };
 }

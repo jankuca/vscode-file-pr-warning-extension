@@ -1,4 +1,4 @@
-import { PRInfo, LineRange } from '../core/types';
+import { PRInfo, DiffHunk } from '../core/types';
 export interface RateLimitState {
     remaining: number | null;
     resetAt: number | null;
@@ -8,7 +8,7 @@ export declare class GitHubClient {
     get rateLimit(): RateLimitState;
     isRateLimited(): boolean;
     fetchOpenPRs(owner: string, repo: string, token: string): Promise<PRInfo[]>;
-    fetchFileDiff(owner: string, repo: string, prNumber: number, filePath: string, token: string): Promise<LineRange[]>;
+    fetchFileDiff(owner: string, repo: string, prNumber: number, filePath: string, token: string): Promise<DiffHunk[]>;
     private mapNodeToPR;
     private updateRateLimit;
 }

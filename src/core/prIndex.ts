@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { PRInfo, PRLineData, RepoCacheEntry, LineRange } from './types';
+import { PRInfo, PRLineData, RepoCacheEntry } from './types';
+import { mapHunksToLocalFile } from './diffParser';
 import { GitService } from '../git/gitService';
 import { AuthService } from '../github/authService';
 import { GitHubClient, AuthError, RateLimitError } from '../github/githubClient';
@@ -105,31 +106,41 @@ export class PRIndex implements vscode.Disposable {
       return [];
     }
 
-    // Initialize line diff cache for this file if needed
-    if (!entry.lineDiffCache.has(info.relativePath)) {
-      entry.lineDiffCache.set(info.relativePath, new Map());
+    // Initialize diff hunk cache for this file if needed
+    if (!entry.diffHunkCache.has(info.relativePath)) {
+      entry.diffHunkCache.set(info.relativePath, new Map());
     }
-    const fileDiffCache = entry.lineDiffCache.get(info.relativePath)!;
+    const fileHunkCache = entry.diffHunkCache.get(info.relativePath)!;
+
+    // Read the local file content for content-based line matching
+    let localContent: string;
+    try {
+      const raw = await vscode.workspace.fs.readFile(uri);
+      localContent = new TextDecoder().decode(raw);
+    } catch {
+      return [];
+    }
 
     const results: PRLineData[] = [];
 
     for (const pr of prs) {
-      let ranges = fileDiffCache.get(pr.number);
-      if (!ranges) {
+      let hunks = fileHunkCache.get(pr.number);
+      if (!hunks) {
         try {
-          ranges = await this.githubClient.fetchFileDiff(
+          hunks = await this.githubClient.fetchFileDiff(
             info.owner,
             info.repo,
             pr.number,
             info.relativePath,
             token
           );
-          fileDiffCache.set(pr.number, ranges);
+          fileHunkCache.set(pr.number, hunks);
         } catch {
-          ranges = [];
+          hunks = [];
         }
       }
 
+      const ranges = mapHunksToLocalFile(hunks, localContent);
       if (ranges.length > 0) {
         results.push({ pr, ranges });
       }
@@ -151,7 +162,7 @@ export class PRIndex implements vscode.Disposable {
   async forceRefresh(): Promise<void> {
     // Clear line diff cache on force refresh
     for (const [, entry] of this.cache) {
-      entry.lineDiffCache.clear();
+      entry.diffHunkCache.clear();
     }
     await this.refreshAll();
   }
@@ -190,7 +201,7 @@ export class PRIndex implements vscode.Disposable {
           prs,
           fileIndex,
           fetchedAt: Date.now(),
-          lineDiffCache: existingEntry?.lineDiffCache ?? new Map(),
+          diffHunkCache: existingEntry?.diffHunkCache ?? new Map(),
         });
 
         this._onDidChangeData.fire();
@@ -214,7 +225,7 @@ export class PRIndex implements vscode.Disposable {
                 prs,
                 fileIndex,
                 fetchedAt: Date.now(),
-                lineDiffCache: new Map(),
+                diffHunkCache: new Map(),
               });
               this._onDidChangeData.fire();
               return;

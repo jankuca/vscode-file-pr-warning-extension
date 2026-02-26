@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PRIndex = void 0;
 const vscode = __importStar(require("vscode"));
+const diffParser_1 = require("./diffParser");
 const githubClient_1 = require("../github/githubClient");
 class PRIndex {
     gitService;
@@ -119,23 +120,33 @@ class PRIndex {
         if (!entry) {
             return [];
         }
-        // Initialize line diff cache for this file if needed
-        if (!entry.lineDiffCache.has(info.relativePath)) {
-            entry.lineDiffCache.set(info.relativePath, new Map());
+        // Initialize diff hunk cache for this file if needed
+        if (!entry.diffHunkCache.has(info.relativePath)) {
+            entry.diffHunkCache.set(info.relativePath, new Map());
         }
-        const fileDiffCache = entry.lineDiffCache.get(info.relativePath);
+        const fileHunkCache = entry.diffHunkCache.get(info.relativePath);
+        // Read the local file content for content-based line matching
+        let localContent;
+        try {
+            const raw = await vscode.workspace.fs.readFile(uri);
+            localContent = new TextDecoder().decode(raw);
+        }
+        catch {
+            return [];
+        }
         const results = [];
         for (const pr of prs) {
-            let ranges = fileDiffCache.get(pr.number);
-            if (!ranges) {
+            let hunks = fileHunkCache.get(pr.number);
+            if (!hunks) {
                 try {
-                    ranges = await this.githubClient.fetchFileDiff(info.owner, info.repo, pr.number, info.relativePath, token);
-                    fileDiffCache.set(pr.number, ranges);
+                    hunks = await this.githubClient.fetchFileDiff(info.owner, info.repo, pr.number, info.relativePath, token);
+                    fileHunkCache.set(pr.number, hunks);
                 }
                 catch {
-                    ranges = [];
+                    hunks = [];
                 }
             }
+            const ranges = (0, diffParser_1.mapHunksToLocalFile)(hunks, localContent);
             if (ranges.length > 0) {
                 results.push({ pr, ranges });
             }
@@ -154,7 +165,7 @@ class PRIndex {
     async forceRefresh() {
         // Clear line diff cache on force refresh
         for (const [, entry] of this.cache) {
-            entry.lineDiffCache.clear();
+            entry.diffHunkCache.clear();
         }
         await this.refreshAll();
     }
@@ -187,7 +198,7 @@ class PRIndex {
                     prs,
                     fileIndex,
                     fetchedAt: Date.now(),
-                    lineDiffCache: existingEntry?.lineDiffCache ?? new Map(),
+                    diffHunkCache: existingEntry?.diffHunkCache ?? new Map(),
                 });
                 this._onDidChangeData.fire();
             }
@@ -211,7 +222,7 @@ class PRIndex {
                                 prs,
                                 fileIndex,
                                 fetchedAt: Date.now(),
-                                lineDiffCache: new Map(),
+                                diffHunkCache: new Map(),
                             });
                             this._onDidChangeData.fire();
                             return;
