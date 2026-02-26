@@ -1,4 +1,4 @@
-export declare const OPEN_PRS_QUERY = "\nquery($owner: String!, $repo: String!, $cursor: String) {\n  repository(owner: $owner, name: $repo) {\n    pullRequests(\n      states: OPEN,\n      first: 50,\n      after: $cursor,\n      orderBy: { field: UPDATED_AT, direction: DESC }\n    ) {\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n      nodes {\n        number\n        title\n        url\n        isDraft\n        reviewDecision\n        createdAt\n        updatedAt\n        headRefName\n        author {\n          login\n        }\n        files(first: 100) {\n          pageInfo {\n            hasNextPage\n          }\n          nodes {\n            path\n          }\n        }\n      }\n    }\n  }\n}\n";
+export declare const OPEN_PRS_QUERY = "\nquery($owner: String!, $repo: String!, $cursor: String) {\n  repository(owner: $owner, name: $repo) {\n    pullRequests(\n      states: OPEN,\n      first: 50,\n      after: $cursor,\n      orderBy: { field: UPDATED_AT, direction: DESC }\n    ) {\n      pageInfo {\n        hasNextPage\n        endCursor\n      }\n      nodes {\n        number\n        title\n        url\n        isDraft\n        reviewDecision\n        createdAt\n        updatedAt\n        headRefName\n        author {\n          login\n        }\n        files(first: 100) {\n          pageInfo {\n            hasNextPage\n            endCursor\n          }\n          nodes {\n            path\n          }\n        }\n      }\n    }\n  }\n}\n";
 export interface GraphQLPRNode {
     number: number;
     title: string;
@@ -14,6 +14,7 @@ export interface GraphQLPRNode {
     files: {
         pageInfo: {
             hasNextPage: boolean;
+            endCursor: string | null;
         };
         nodes: {
             path: string;
@@ -39,7 +40,7 @@ export interface GraphQLPRResponse {
 export interface RESTFileEntry {
     sha: string;
     filename: string;
-    status: string;
+    status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged';
     patch?: string;
 }
 //# sourceMappingURL=queries.d.ts.map

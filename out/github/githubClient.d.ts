@@ -9,6 +9,7 @@ export declare class GitHubClient {
     isRateLimited(): boolean;
     fetchOpenPRs(owner: string, repo: string, token: string): Promise<PRInfo[]>;
     fetchFileDiff(owner: string, repo: string, prNumber: number, filePath: string, token: string): Promise<DiffHunk[]>;
+    private fetchPRFileList;
     private mapNodeToPR;
     private updateRateLimit;
 }

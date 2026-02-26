@@ -100,6 +100,16 @@ class GitHubClient {
             }
             cursor = data.pageInfo.hasNextPage ? data.pageInfo.endCursor : null;
         } while (cursor);
+        // Fetch complete file lists for PRs with >100 files
+        for (const pr of prs) {
+            if (pr.filesIncomplete) {
+                const allFiles = await this.fetchPRFileList(owner, repo, pr.number, token);
+                if (allFiles) {
+                    pr.files = allFiles;
+                    pr.filesIncomplete = false;
+                }
+            }
+        }
         return prs;
     }
     async fetchFileDiff(owner, repo, prNumber, filePath, token) {
@@ -135,6 +145,33 @@ class GitHubClient {
             page++;
         }
         return [];
+    }
+    async fetchPRFileList(owner, repo, prNumber, token) {
+        const files = [];
+        const MAX_PAGES = 30;
+        let page = 1;
+        while (page <= MAX_PAGES) {
+            const url = `${GITHUB_API_URL}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`;
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                },
+            });
+            this.updateRateLimit(response.headers);
+            if (!response.ok) {
+                return null;
+            }
+            const entries = (await response.json());
+            for (const entry of entries) {
+                files.push(entry.filename);
+            }
+            if (entries.length < 100) {
+                break;
+            }
+            page++;
+        }
+        return files;
     }
     mapNodeToPR(node) {
         return {

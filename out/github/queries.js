@@ -29,6 +29,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
         files(first: 100) {
           pageInfo {
             hasNextPage
+            endCursor
           }
           nodes {
             path

@@ -91,7 +91,7 @@ class PRIndex {
         const cacheKey = `${info.owner}/${info.repo}`;
         const entry = this.cache.get(cacheKey);
         const config = vscode.workspace.getConfiguration('filePrWarning');
-        const refreshMs = (config.get('refreshIntervalMinutes') ?? 10) * 60 * 1000;
+        const refreshMs = Math.max(config.get('refreshIntervalMinutes') ?? 10, 1) * 60 * 1000;
         if (!entry || Date.now() - entry.fetchedAt > refreshMs) {
             await this.fetchForRepo(info.owner, info.repo);
         }
@@ -159,13 +159,18 @@ class PRIndex {
     async computeHunks(info, pr, originUrl) {
         // Try local git diff first
         if (originUrl) {
-            const rawDiff = await this.gitDiffService.diffFileAgainstBranch(info.rootUri, originUrl, pr.headRefName, info.relativePath);
-            if (rawDiff !== null) {
-                const patch = (0, diffParser_1.extractPatchFromDiff)(rawDiff);
-                if (patch) {
-                    return (0, diffParser_1.parsePatchToHunks)(patch);
+            try {
+                const rawDiff = await this.gitDiffService.diffFileAgainstBranch(info.rootUri, originUrl, pr.headRefName, info.relativePath);
+                if (rawDiff !== null) {
+                    const patch = (0, diffParser_1.extractPatchFromDiff)(rawDiff);
+                    if (patch) {
+                        return (0, diffParser_1.parsePatchToHunks)(patch);
+                    }
+                    return []; // diff ran but no changes for this file
                 }
-                return []; // diff ran but no changes for this file
+            }
+            catch {
+                // Local diff failed — fall through to GitHub API
             }
         }
         // Fallback: GitHub API
@@ -255,20 +260,9 @@ class PRIndex {
                 fileIndex.set(filePath, existing);
             }
         }
-        // Prune stale diffHunkCache entries for files no longer in any PR
-        const existingCache = this.cache.get(cacheKey)?.diffHunkCache;
-        let diffHunkCache;
-        if (existingCache) {
-            diffHunkCache = new Map();
-            for (const [filePath, hunks] of existingCache) {
-                if (fileIndex.has(filePath)) {
-                    diffHunkCache.set(filePath, hunks);
-                }
-            }
-        }
-        else {
-            diffHunkCache = new Map();
-        }
+        // Start with a fresh diffHunkCache — hunks are lazily recomputed on access.
+        // Reusing old entries would serve stale hunks after PRs are updated.
+        const diffHunkCache = new Map();
         this.cache.set(cacheKey, {
             prs,
             fileIndex,
