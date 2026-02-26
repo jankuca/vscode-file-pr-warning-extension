@@ -41,7 +41,6 @@ const authService_1 = require("./github/authService");
 const githubClient_1 = require("./github/githubClient");
 const prIndex_1 = require("./core/prIndex");
 const codeLensProvider_1 = require("./providers/codeLensProvider");
-const decorationProvider_1 = require("./providers/decorationProvider");
 const lineHighlighter_1 = require("./providers/lineHighlighter");
 const commands_1 = require("./commands/commands");
 let gitService;
@@ -49,7 +48,6 @@ let authService;
 let githubClient;
 let prIndex;
 let codeLensProvider;
-let decorationProvider;
 let lineHighlighter;
 async function activate(context) {
     const config = vscode.workspace.getConfiguration('filePrWarning');
@@ -72,9 +70,6 @@ async function activate(context) {
     // Register CodeLens provider
     codeLensProvider = new codeLensProvider_1.PRCodeLensProvider(prIndex);
     context.subscriptions.push(vscode.languages.registerCodeLensProvider({ scheme: 'file' }, codeLensProvider));
-    // Register file decoration provider
-    decorationProvider = new decorationProvider_1.PRFileDecorationProvider(prIndex);
-    context.subscriptions.push(vscode.window.registerFileDecorationProvider(decorationProvider));
     // Initialize line highlighter
     lineHighlighter = new lineHighlighter_1.LineHighlighter(prIndex, context.extensionUri);
     // Start auto-refresh timer
@@ -94,9 +89,6 @@ async function activate(context) {
             // CodeLens provider will re-evaluate on next request
             codeLensProvider['_onDidChangeCodeLenses'].fire();
         }
-        if (e.affectsConfiguration('filePrWarning.showFileBadge')) {
-            decorationProvider['_onDidChangeFileDecorations'].fire(undefined);
-        }
         if (e.affectsConfiguration('filePrWarning.showLineHighlights')) {
             if (!updatedConfig.get('showLineHighlights')) {
                 lineHighlighter.clearDecorations();
@@ -115,7 +107,6 @@ async function activate(context) {
                 prIndex.stopAutoRefresh();
                 lineHighlighter.clearDecorations();
                 codeLensProvider['_onDidChangeCodeLenses'].fire();
-                decorationProvider['_onDidChangeFileDecorations'].fire(undefined);
             }
             else {
                 // Re-enable
@@ -136,7 +127,7 @@ async function activate(context) {
         }
     }));
     // Register disposables
-    context.subscriptions.push(gitService, authService, prIndex, codeLensProvider, decorationProvider, lineHighlighter);
+    context.subscriptions.push(gitService, authService, prIndex, codeLensProvider, lineHighlighter);
 }
 function deactivate() {
     // Cleanup is handled by disposables registered in context.subscriptions

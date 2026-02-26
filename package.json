@@ -58,15 +58,10 @@
           "default": true,
           "description": "Show CodeLens above line 1"
         },
-        "filePrWarning.showFileBadge": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show PR count badge on tabs and Explorer"
-        },
         "filePrWarning.showLineHighlights": {
           "type": "boolean",
           "default": true,
-          "description": "Show line-level gutter icons and background highlights"
+          "description": "Show line-level gutter icons"
         },
         "filePrWarning.excludeDraftPRs": {
           "type": "boolean",
@@ -77,18 +72,8 @@
     },
     "colors": [
       {
-        "id": "filePrWarning.lineHighlightBackground",
-        "description": "Background color for lines modified by other PRs",
-        "defaults": {
-          "dark": "#ff980020",
-          "light": "#ff980020",
-          "highContrast": "#ff980040",
-          "highContrastLight": "#ff980040"
-        }
-      },
-      {
         "id": "filePrWarning.lineHighlightBorder",
-        "description": "Border color for lines modified by other PRs",
+        "description": "Overview ruler color for lines modified by other PRs",
         "defaults": {
           "dark": "#ff980060",
           "light": "#ff980060",

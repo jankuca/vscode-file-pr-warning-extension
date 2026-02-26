@@ -44,8 +44,6 @@ class LineHighlighter {
         this.prIndex = prIndex;
         this.extensionUri = extensionUri;
         this.decorationType = vscode.window.createTextEditorDecorationType({
-            backgroundColor: new vscode.ThemeColor('filePrWarning.lineHighlightBackground'),
-            isWholeLine: true,
             overviewRulerColor: new vscode.ThemeColor('filePrWarning.lineHighlightBorder'),
             overviewRulerLane: vscode.OverviewRulerLane.Left,
             gutterIconPath: vscode.Uri.joinPath(this.extensionUri, 'resources', 'gutter-warning.svg'),

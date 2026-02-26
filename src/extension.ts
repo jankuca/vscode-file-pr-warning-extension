@@ -4,7 +4,6 @@ import { AuthService } from './github/authService';
 import { GitHubClient } from './github/githubClient';
 import { PRIndex } from './core/prIndex';
 import { PRCodeLensProvider } from './providers/codeLensProvider';
-import { PRFileDecorationProvider } from './providers/decorationProvider';
 import { LineHighlighter } from './providers/lineHighlighter';
 import { registerCommands } from './commands/commands';
 
@@ -13,7 +12,6 @@ let authService: AuthService;
 let githubClient: GitHubClient;
 let prIndex: PRIndex;
 let codeLensProvider: PRCodeLensProvider;
-let decorationProvider: PRFileDecorationProvider;
 let lineHighlighter: LineHighlighter;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -47,12 +45,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     )
   );
 
-  // Register file decoration provider
-  decorationProvider = new PRFileDecorationProvider(prIndex);
-  context.subscriptions.push(
-    vscode.window.registerFileDecorationProvider(decorationProvider)
-  );
-
   // Initialize line highlighter
   lineHighlighter = new LineHighlighter(prIndex, context.extensionUri);
 
@@ -79,10 +71,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         codeLensProvider['_onDidChangeCodeLenses'].fire();
       }
 
-      if (e.affectsConfiguration('filePrWarning.showFileBadge')) {
-        decorationProvider['_onDidChangeFileDecorations'].fire(undefined);
-      }
-
       if (e.affectsConfiguration('filePrWarning.showLineHighlights')) {
         if (!updatedConfig.get<boolean>('showLineHighlights')) {
           lineHighlighter.clearDecorations();
@@ -102,7 +90,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           prIndex.stopAutoRefresh();
           lineHighlighter.clearDecorations();
           codeLensProvider['_onDidChangeCodeLenses'].fire();
-          decorationProvider['_onDidChangeFileDecorations'].fire(undefined);
         } else {
           // Re-enable
           const interval = updatedConfig.get<number>('refreshIntervalMinutes') ?? 10;
@@ -133,7 +120,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     authService,
     prIndex,
     codeLensProvider,
-    decorationProvider,
     lineHighlighter
   );
 }
