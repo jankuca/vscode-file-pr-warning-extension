@@ -155,6 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           const interval = updatedConfig.get<number>('refreshIntervalMinutes') ?? 10;
           prIndex.startAutoRefresh(interval);
           prIndex.invalidate();
+          lineHighlighter.updateActiveEditor();
         }
       }
     })
@@ -168,7 +169,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Fetch when files are opened
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(editor => {
-      if (editor?.document.uri.scheme === 'file') {
+      const enabled = vscode.workspace.getConfiguration('filePrWarning').get<boolean>('enabled');
+      if (enabled && editor?.document.uri.scheme === 'file') {
         prIndex.getPRsForFile(editor.document.uri).catch(() => {});
       }
     })
