@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 export class AuthService implements vscode.Disposable {
   private session: vscode.AuthenticationSession | null = null;
   private firstCall = true;
+  private tokenRequest: Promise<string | null> | null = null;
   private disposables: vscode.Disposable[] = [];
 
   constructor() {
@@ -22,6 +23,20 @@ export class AuthService implements vscode.Disposable {
       return this.session.accessToken;
     }
 
+    // Coalesce concurrent calls into a single auth request
+    if (this.tokenRequest) {
+      return this.tokenRequest;
+    }
+
+    this.tokenRequest = this.doGetToken();
+    try {
+      return await this.tokenRequest;
+    } finally {
+      this.tokenRequest = null;
+    }
+  }
+
+  private async doGetToken(): Promise<string | null> {
     try {
       const session = await vscode.authentication.getSession(
         'github',
@@ -36,7 +51,8 @@ export class AuthService implements vscode.Disposable {
 
       this.session = session;
       return session.accessToken;
-    } catch {
+    } catch (err) {
+      console.error('filePrWarning: failed to acquire GitHub token', err);
       this.firstCall = false;
       return null;
     }

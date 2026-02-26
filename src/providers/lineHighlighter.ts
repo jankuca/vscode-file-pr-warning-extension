@@ -99,9 +99,12 @@ export class LineHighlighter implements vscode.Disposable {
       const key = makeKey(color, widthLevel);
 
       const hover = new vscode.MarkdownString();
-      hover.isTrusted = true;
       for (const pr of prs) {
-        hover.appendMarkdown(`Modified by PR [#${pr.number} ${pr.title}](${pr.url}) by @${pr.author}\n\n`);
+        hover.appendMarkdown(`Modified by PR [#${pr.number} `);
+        hover.appendText(pr.title);
+        hover.appendMarkdown(`](${pr.url}) by @`);
+        hover.appendText(pr.author);
+        hover.appendMarkdown('\n\n');
       }
 
       const deco: vscode.DecorationOptions = {

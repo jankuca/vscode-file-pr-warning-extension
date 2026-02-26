@@ -63,7 +63,7 @@ export interface GraphQLPRResponse {
         };
         nodes: GraphQLPRNode[];
       };
-    };
+    } | null;
   };
   errors?: { message: string }[];
 }

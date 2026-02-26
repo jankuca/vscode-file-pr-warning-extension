@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { PRIndex } from '../core/prIndex';
-import { PRInfo } from '../core/types';
+
 
 export function registerCommands(
   context: vscode.ExtensionContext,
@@ -21,7 +21,14 @@ function showPRList(prIndex: PRIndex) {
       return;
     }
 
-    const prs = await prIndex.getPRsForFile(fileUri);
+    let prs;
+    try {
+      prs = await prIndex.getPRsForFile(fileUri);
+    } catch (e) {
+      console.error('filePrWarning: failed to fetch PRs for file', e);
+      vscode.window.showErrorMessage('File PR Warning: Failed to fetch PR data.');
+      return;
+    }
     if (prs.length === 0) {
       vscode.window.showInformationMessage('No open PRs modify this file.');
       return;
@@ -55,7 +62,14 @@ function showLinePRs(prIndex: PRIndex) {
       return;
     }
 
-    const prLineData = await prIndex.getLineRangesForFile(fileUri);
+    let prLineData;
+    try {
+      prLineData = await prIndex.getLineRangesForFile(fileUri);
+    } catch (e) {
+      console.error('filePrWarning: failed to fetch line ranges', e);
+      vscode.window.showErrorMessage('File PR Warning: Failed to fetch PR data.');
+      return;
+    }
     const matchingPRs = prLineData
       .filter(({ ranges }) => ranges.some(r => lineNumber >= r.startLine && lineNumber <= r.endLine))
       .map(({ pr }) => pr);
@@ -96,7 +110,12 @@ function refresh(prIndex: PRIndex) {
         cancellable: false,
       },
       async () => {
-        await prIndex.forceRefresh();
+        try {
+          await prIndex.forceRefresh();
+        } catch (e) {
+          console.error('filePrWarning: refresh failed', e);
+          vscode.window.showErrorMessage('File PR Warning: Refresh failed.');
+        }
       }
     );
   };

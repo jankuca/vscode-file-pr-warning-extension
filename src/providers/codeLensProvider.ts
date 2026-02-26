@@ -24,7 +24,13 @@ export class PRCodeLensProvider implements vscode.CodeLensProvider {
       return [];
     }
 
-    const prs = await this.prIndex.getPRsForFile(document.uri);
+    let prs;
+    try {
+      prs = await this.prIndex.getPRsForFile(document.uri);
+    } catch (e) {
+      console.error('filePrWarning: CodeLens getPRsForFile failed', e);
+      return [];
+    }
     if (prs.length === 0) {
       return [];
     }

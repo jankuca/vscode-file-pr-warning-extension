@@ -1,4 +1,4 @@
-import { Uri, Event, Disposable } from 'vscode';
+import { Uri, Event } from 'vscode';
 
 export interface GitExtension {
   readonly enabled: boolean;

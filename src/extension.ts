@@ -7,6 +7,7 @@ import { PRIndex } from './core/prIndex';
 import { PRCodeLensProvider } from './providers/codeLensProvider';
 import { LineHighlighter } from './providers/lineHighlighter';
 import { PRTreeDataProvider } from './providers/prTreeDataProvider';
+import { PRFileDecorationProvider } from './providers/decorationProvider';
 import { registerCommands } from './commands/commands';
 
 let gitService: GitService;
@@ -19,11 +20,6 @@ let lineHighlighter: LineHighlighter;
 let prTreeDataProvider: PRTreeDataProvider;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const config = vscode.workspace.getConfiguration('filePrWarning');
-  if (!config.get<boolean>('enabled')) {
-    return;
-  }
-
   // Initialize git service
   gitService = new GitService();
   const gitReady = await gitService.initialize();
@@ -59,6 +55,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: prTreeDataProvider,
   });
 
+  // Register file decoration provider
+  context.subscriptions.push(
+    vscode.window.registerFileDecorationProvider(new PRFileDecorationProvider(prIndex))
+  );
+
   // Freshness indicator — update tree view description with fetch age
   function updateFreshnessIndicator() {
     if (prIndex.lastFetchError || gitDiffService.lastRemoteFetchError) {
@@ -84,15 +85,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         treeView.title = 'Open PRs';
       }
     }),
-    vscode.commands.registerCommand('filePrWarning.refreshTreeView', () => {
-      prIndex.forceRefresh();
+    vscode.commands.registerCommand('filePrWarning.refreshTreeView', async () => {
+      try {
+        await prIndex.forceRefresh();
+      } catch (e) {
+        console.error('filePrWarning: refresh failed', e);
+      }
     }),
     { dispose: () => clearInterval(freshnessTimer) },
   );
 
-  // Start auto-refresh timer
-  const refreshInterval = config.get<number>('refreshIntervalMinutes') ?? 10;
-  prIndex.startAutoRefresh(refreshInterval);
+  // Start auto-refresh if enabled
+  const config = vscode.workspace.getConfiguration('filePrWarning');
+  if (config.get<boolean>('enabled')) {
+    const refreshInterval = config.get<number>('refreshIntervalMinutes') ?? 10;
+    prIndex.startAutoRefresh(refreshInterval);
+  }
 
   // React to configuration changes
   context.subscriptions.push(
@@ -104,8 +112,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const updatedConfig = vscode.workspace.getConfiguration('filePrWarning');
 
       if (e.affectsConfiguration('filePrWarning.refreshIntervalMinutes')) {
-        const interval = updatedConfig.get<number>('refreshIntervalMinutes') ?? 10;
-        prIndex.startAutoRefresh(interval);
+        if (updatedConfig.get<boolean>('enabled')) {
+          const interval = updatedConfig.get<number>('refreshIntervalMinutes') ?? 10;
+          prIndex.startAutoRefresh(interval);
+        }
       }
 
       if (e.affectsConfiguration('filePrWarning.showCodeLens')) {
@@ -142,8 +152,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  // Trigger initial fetch for the active editor
-  if (vscode.window.activeTextEditor) {
+  // Trigger initial fetch for the active editor (if enabled)
+  if (config.get<boolean>('enabled') && vscode.window.activeTextEditor) {
     prIndex.getPRsForFile(vscode.window.activeTextEditor.document.uri);
   }
 
