@@ -1,0 +1,129 @@
+{
+  "name": "file-pr-warning",
+  "displayName": "File PR Warning",
+  "description": "Warns when a file you're editing is also modified by open GitHub PRs",
+  "version": "0.0.4",
+  "publisher": "jankuca",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "extensionDependencies": ["vscode.git"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "filePrWarning.showPRList",
+        "title": "Show PRs Modifying This File",
+        "category": "File PR Warning"
+      },
+      {
+        "command": "filePrWarning.showLinePRs",
+        "title": "Show PRs Modifying This Line",
+        "category": "File PR Warning"
+      },
+      {
+        "command": "filePrWarning.refresh",
+        "title": "Refresh PR Data",
+        "category": "File PR Warning"
+      },
+      {
+        "command": "filePrWarning.refreshTreeView",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "File PR Warning"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "filePrWarning.prListView",
+          "name": "Open PRs",
+          "when": "config.filePrWarning.enabled"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "filePrWarning.prListView",
+        "contents": "No open PRs modify this file.\n[Refresh](command:filePrWarning.refresh)"
+      }
+    ],
+    "menus": {
+      "editor/lineNumber/context": [
+        {
+          "command": "filePrWarning.showLinePRs",
+          "when": "config.filePrWarning.enabled"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "filePrWarning.refreshTreeView",
+          "when": "view == filePrWarning.prListView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "File PR Warning",
+      "properties": {
+        "filePrWarning.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable the extension"
+        },
+        "filePrWarning.refreshIntervalMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Auto-refresh interval in minutes"
+        },
+        "filePrWarning.showCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CodeLens above line 1"
+        },
+        "filePrWarning.showLineHighlights": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show line-level gutter icons"
+        },
+        "filePrWarning.showFileBadge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show file-level badge for PR status in the explorer"
+        },
+        "filePrWarning.excludeDraftPRs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide draft PRs from results"
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "filePrWarning.lineHighlightBorder",
+        "description": "Overview ruler color for lines modified by other PRs",
+        "defaults": {
+          "dark": "#ff980060",
+          "light": "#ff980060",
+          "highContrast": "#ff9800",
+          "highContrastLight": "#ff9800"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
