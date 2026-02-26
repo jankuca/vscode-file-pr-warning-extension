@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { PRInfo, PRLineData, RepoCacheEntry } from './types';
-import { mapHunksToLocalFile } from './diffParser';
+import { extractPatchFromDiff, parsePatchToHunks, mapHunksToLocalFile } from './diffParser';
 import { GitService } from '../git/gitService';
+import { GitDiffService } from '../git/gitDiffService';
 import { AuthService } from '../github/authService';
 import { GitHubClient, AuthError, RateLimitError } from '../github/githubClient';
 
@@ -14,14 +15,21 @@ export class PRIndex implements vscode.Disposable {
   private readonly _onDidChangeData = new vscode.EventEmitter<void>();
   readonly onDidChangeData = this._onDidChangeData.event;
 
+  lastFetchedAt: number | null = null;
+  lastFetchError = false;
+
   constructor(
     private gitService: GitService,
     private authService: AuthService,
-    private githubClient: GitHubClient
+    private githubClient: GitHubClient,
+    private gitDiffService: GitDiffService,
   ) {
-    // Re-filter on branch change (no re-fetch needed)
+    // Re-filter and clear diff cache on branch change (HEAD changed)
     this.disposables.push(
       this.gitService.onDidChangeBranch(() => {
+        for (const entry of this.cache.values()) {
+          entry.diffHunkCache.clear();
+        }
         this._onDidChangeData.fire();
       })
     );
@@ -95,11 +103,6 @@ export class PRIndex implements vscode.Disposable {
       return [];
     }
 
-    const token = await this.authService.getToken();
-    if (!token) {
-      return [];
-    }
-
     const cacheKey = `${info.owner}/${info.repo}`;
     const entry = this.cache.get(cacheKey);
     if (!entry) {
@@ -121,23 +124,14 @@ export class PRIndex implements vscode.Disposable {
       return [];
     }
 
+    const originUrl = this.gitService.getOriginUrl(info.rootUri);
     const results: PRLineData[] = [];
 
     for (const pr of prs) {
       let hunks = fileHunkCache.get(pr.number);
       if (!hunks) {
-        try {
-          hunks = await this.githubClient.fetchFileDiff(
-            info.owner,
-            info.repo,
-            pr.number,
-            info.relativePath,
-            token
-          );
-          fileHunkCache.set(pr.number, hunks);
-        } catch {
-          hunks = [];
-        }
+        hunks = await this.computeHunks(info, pr, originUrl);
+        fileHunkCache.set(pr.number, hunks);
       }
 
       const ranges = mapHunksToLocalFile(hunks, localContent);
@@ -149,8 +143,41 @@ export class PRIndex implements vscode.Disposable {
     return results;
   }
 
+  private async computeHunks(
+    info: { rootUri: string; owner: string; repo: string; relativePath: string },
+    pr: PRInfo,
+    originUrl: string | null,
+  ) {
+    // Try local git diff first
+    if (originUrl) {
+      const rawDiff = await this.gitDiffService.diffFileAgainstBranch(
+        info.rootUri, originUrl, pr.headRefName, info.relativePath
+      );
+      if (rawDiff !== null) {
+        const patch = extractPatchFromDiff(rawDiff);
+        if (patch) {
+          return parsePatchToHunks(patch);
+        }
+        return []; // diff ran but no changes for this file
+      }
+    }
+
+    // Fallback: GitHub API
+    const token = await this.authService.getToken();
+    if (!token) {
+      return [];
+    }
+
+    try {
+      return await this.githubClient.fetchFileDiff(
+        info.owner, info.repo, pr.number, info.relativePath, token
+      );
+    } catch {
+      return [];
+    }
+  }
+
   async refreshAll(): Promise<void> {
-    // Refresh all cached repos
     const promises: Promise<void>[] = [];
     for (const [key] of this.cache) {
       const [owner, repo] = key.split('/');
@@ -160,10 +187,10 @@ export class PRIndex implements vscode.Disposable {
   }
 
   async forceRefresh(): Promise<void> {
-    // Clear line diff cache on force refresh
     for (const [, entry] of this.cache) {
       entry.diffHunkCache.clear();
     }
+    this.gitDiffService.clearFetchedBranches();
     await this.refreshAll();
   }
 
@@ -195,7 +222,7 @@ export class PRIndex implements vscode.Disposable {
           }
         }
 
-        // Preserve existing line diff cache if possible
+        // Preserve existing diff hunk cache if possible
         const existingEntry = this.cache.get(cacheKey);
         this.cache.set(cacheKey, {
           prs,
@@ -204,11 +231,15 @@ export class PRIndex implements vscode.Disposable {
           diffHunkCache: existingEntry?.diffHunkCache ?? new Map(),
         });
 
+        this.lastFetchedAt = Date.now();
+        this.lastFetchError = false;
         this._onDidChangeData.fire();
+
+        // Eagerly fetch all PR branches in the background
+        this.eagerFetchBranches(prs);
       } catch (e) {
         if (e instanceof AuthError) {
           this.authService.clearSession();
-          // Try once more silently
           const newToken = await this.authService.getToken();
           if (newToken) {
             try {
@@ -227,7 +258,10 @@ export class PRIndex implements vscode.Disposable {
                 fetchedAt: Date.now(),
                 diffHunkCache: new Map(),
               });
+              this.lastFetchedAt = Date.now();
+              this.lastFetchError = false;
               this._onDidChangeData.fire();
+              this.eagerFetchBranches(prs);
               return;
             } catch {
               // Fall through to use stale cache
@@ -238,6 +272,7 @@ export class PRIndex implements vscode.Disposable {
             `File PR Warning: ${e.message}`
           );
         }
+        this.lastFetchError = true;
         // Network errors or other failures — keep stale cache
       }
     };
@@ -247,6 +282,54 @@ export class PRIndex implements vscode.Disposable {
       await this.fetchingPromise;
     } finally {
       this.fetchingPromise = null;
+    }
+  }
+
+  /** Fire-and-forget: fetch all PR branches so they're ready when files are opened. */
+  private eagerFetchBranches(prs: PRInfo[]): void {
+    // Collect unique branch names and find a repo root to use
+    const branches = new Set<string>();
+    for (const pr of prs) {
+      branches.add(pr.headRefName);
+    }
+
+    // Find a repo root from any cached entry (we need it for git operations)
+    let repoRoot: string | null = null;
+    let originUrl: string | null = null;
+
+    for (const entry of this.cache.values()) {
+      for (const pr of entry.prs) {
+        if (branches.has(pr.headRefName)) {
+          // Use the first PR's repo root we can find
+          for (const repo of this.cache.keys()) {
+            const [owner, repoName] = repo.split('/');
+            // Find a workspace folder that matches this repo
+            for (const folder of vscode.workspace.workspaceFolders ?? []) {
+              const info = this.gitService.getRepoInfo(folder.uri);
+              if (info && info.owner === owner && info.repo === repoName) {
+                repoRoot = info.rootUri;
+                originUrl = this.gitService.getOriginUrl(info.rootUri);
+                break;
+              }
+            }
+            if (repoRoot) { break; }
+          }
+          break;
+        }
+      }
+      if (repoRoot) { break; }
+    }
+
+    if (!repoRoot || !originUrl) {
+      return;
+    }
+
+    const root = repoRoot;
+    const url = originUrl;
+
+    for (const branch of branches) {
+      // Fire and forget — errors are handled inside fetchBranch
+      this.gitDiffService.fetchBranch(root, url, branch).catch(() => {});
     }
   }
 

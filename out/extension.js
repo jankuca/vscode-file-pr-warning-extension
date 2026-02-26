@@ -37,6 +37,7 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const gitService_1 = require("./git/gitService");
+const gitDiffService_1 = require("./git/gitDiffService");
 const authService_1 = require("./github/authService");
 const githubClient_1 = require("./github/githubClient");
 const prIndex_1 = require("./core/prIndex");
@@ -45,6 +46,7 @@ const lineHighlighter_1 = require("./providers/lineHighlighter");
 const prTreeDataProvider_1 = require("./providers/prTreeDataProvider");
 const commands_1 = require("./commands/commands");
 let gitService;
+let gitDiffService;
 let authService;
 let githubClient;
 let prIndex;
@@ -64,9 +66,10 @@ async function activate(context) {
         return;
     }
     // Initialize services
+    gitDiffService = new gitDiffService_1.GitDiffService();
     authService = new authService_1.AuthService();
     githubClient = new githubClient_1.GitHubClient();
-    prIndex = new prIndex_1.PRIndex(gitService, authService, githubClient);
+    prIndex = new prIndex_1.PRIndex(gitService, authService, githubClient, gitDiffService);
     // Register commands
     (0, commands_1.registerCommands)(context, prIndex);
     // Register CodeLens provider
@@ -79,7 +82,20 @@ async function activate(context) {
     const treeView = vscode.window.createTreeView('filePrWarning.prListView', {
         treeDataProvider: prTreeDataProvider,
     });
-    context.subscriptions.push(treeView, prTreeDataProvider, vscode.window.onDidChangeActiveTextEditor(editor => {
+    // Freshness indicator — update tree view description with fetch age
+    function updateFreshnessIndicator() {
+        if (prIndex.lastFetchError || gitDiffService.lastRemoteFetchError) {
+            treeView.description = '\u26A0 Fetch failed';
+        }
+        else if (prIndex.lastFetchedAt) {
+            treeView.description = `Fetched ${timeAgo(prIndex.lastFetchedAt)}`;
+        }
+        else {
+            treeView.description = undefined;
+        }
+    }
+    const freshnessTimer = setInterval(updateFreshnessIndicator, 30_000);
+    context.subscriptions.push(treeView, prTreeDataProvider, prIndex.onDidChangeData(() => updateFreshnessIndicator()), vscode.window.onDidChangeActiveTextEditor(editor => {
         if (editor?.document.uri.scheme === 'file') {
             const fileName = editor.document.uri.path.split('/').pop() ?? '';
             treeView.title = `Open PRs: ${fileName}`;
@@ -89,7 +105,7 @@ async function activate(context) {
         }
     }), vscode.commands.registerCommand('filePrWarning.refreshTreeView', () => {
         prIndex.forceRefresh();
-    }));
+    }), { dispose: () => clearInterval(freshnessTimer) });
     // Start auto-refresh timer
     const refreshInterval = config.get('refreshIntervalMinutes') ?? 10;
     prIndex.startAutoRefresh(refreshInterval);
@@ -145,7 +161,20 @@ async function activate(context) {
         }
     }));
     // Register disposables
-    context.subscriptions.push(gitService, authService, prIndex, codeLensProvider, lineHighlighter);
+    context.subscriptions.push(gitService, gitDiffService, authService, prIndex, codeLensProvider, lineHighlighter);
+}
+function timeAgo(timestamp) {
+    const diffMs = Date.now() - timestamp;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour > 0) {
+        return diffHour === 1 ? '1 hour ago' : `${diffHour} hours ago`;
+    }
+    if (diffMin > 0) {
+        return diffMin === 1 ? '1 min ago' : `${diffMin} min ago`;
+    }
+    return 'just now';
 }
 function deactivate() {
     // Cleanup is handled by disposables registered in context.subscriptions

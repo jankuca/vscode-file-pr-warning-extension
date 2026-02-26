@@ -10,6 +10,7 @@ export declare class GitService implements vscode.Disposable {
     getRepoInfo(fileUri: vscode.Uri): (RepoInfo & {
         relativePath: string;
     }) | null;
+    getOriginUrl(repoRootPath: string): string | null;
     getCurrentBranch(fileUri: vscode.Uri): string | undefined;
     dispose(): void;
 }

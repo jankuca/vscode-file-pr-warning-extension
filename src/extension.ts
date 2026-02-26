@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GitService } from './git/gitService';
+import { GitDiffService } from './git/gitDiffService';
 import { AuthService } from './github/authService';
 import { GitHubClient } from './github/githubClient';
 import { PRIndex } from './core/prIndex';
@@ -9,6 +10,7 @@ import { PRTreeDataProvider } from './providers/prTreeDataProvider';
 import { registerCommands } from './commands/commands';
 
 let gitService: GitService;
+let gitDiffService: GitDiffService;
 let authService: AuthService;
 let githubClient: GitHubClient;
 let prIndex: PRIndex;
@@ -31,9 +33,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   // Initialize services
+  gitDiffService = new GitDiffService();
   authService = new AuthService();
   githubClient = new GitHubClient();
-  prIndex = new PRIndex(gitService, authService, githubClient);
+  prIndex = new PRIndex(gitService, authService, githubClient, gitDiffService);
 
   // Register commands
   registerCommands(context, prIndex);
@@ -55,9 +58,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const treeView = vscode.window.createTreeView('filePrWarning.prListView', {
     treeDataProvider: prTreeDataProvider,
   });
+
+  // Freshness indicator — update tree view description with fetch age
+  function updateFreshnessIndicator() {
+    if (prIndex.lastFetchError || gitDiffService.lastRemoteFetchError) {
+      treeView.description = '\u26A0 Fetch failed';
+    } else if (prIndex.lastFetchedAt) {
+      treeView.description = `Fetched ${timeAgo(prIndex.lastFetchedAt)}`;
+    } else {
+      treeView.description = undefined;
+    }
+  }
+
+  const freshnessTimer = setInterval(updateFreshnessIndicator, 30_000);
+
   context.subscriptions.push(
     treeView,
     prTreeDataProvider,
+    prIndex.onDidChangeData(() => updateFreshnessIndicator()),
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (editor?.document.uri.scheme === 'file') {
         const fileName = editor.document.uri.path.split('/').pop() ?? '';
@@ -69,6 +87,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('filePrWarning.refreshTreeView', () => {
       prIndex.forceRefresh();
     }),
+    { dispose: () => clearInterval(freshnessTimer) },
   );
 
   // Start auto-refresh timer
@@ -140,11 +159,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Register disposables
   context.subscriptions.push(
     gitService,
+    gitDiffService,
     authService,
     prIndex,
     codeLensProvider,
     lineHighlighter
   );
+}
+
+function timeAgo(timestamp: number): string {
+  const diffMs = Date.now() - timestamp;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+
+  if (diffHour > 0) {
+    return diffHour === 1 ? '1 hour ago' : `${diffHour} hours ago`;
+  }
+  if (diffMin > 0) {
+    return diffMin === 1 ? '1 min ago' : `${diffMin} min ago`;
+  }
+  return 'just now';
 }
 
 export function deactivate(): void {

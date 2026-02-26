@@ -88,6 +88,20 @@ export class GitService implements vscode.Disposable {
     };
   }
 
+  getOriginUrl(repoRootPath: string): string | null {
+    if (!this.gitAPI) {
+      return null;
+    }
+
+    for (const repo of this.gitAPI.repositories) {
+      if (repo.rootUri.fsPath === repoRootPath) {
+        const remote = repo.state.remotes.find(r => r.name === 'origin');
+        return remote?.fetchUrl ?? remote?.pushUrl ?? null;
+      }
+    }
+    return null;
+  }
+
   getCurrentBranch(fileUri: vscode.Uri): string | undefined {
     if (!this.gitAPI) {
       return undefined;
