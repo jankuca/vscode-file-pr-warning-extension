@@ -162,14 +162,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Trigger initial fetch for the active editor (if enabled)
   if (config.get<boolean>('enabled') && vscode.window.activeTextEditor) {
-    prIndex.getPRsForFile(vscode.window.activeTextEditor.document.uri);
+    prIndex.getPRsForFile(vscode.window.activeTextEditor.document.uri).catch(() => {});
   }
 
   // Fetch when files are opened
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (editor?.document.uri.scheme === 'file') {
-        prIndex.getPRsForFile(editor.document.uri);
+        prIndex.getPRsForFile(editor.document.uri).catch(() => {});
       }
     })
   );
