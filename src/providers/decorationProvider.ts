@@ -15,6 +15,11 @@ export class PRFileDecorationProvider implements vscode.FileDecorationProvider, 
     );
   }
 
+  /** Signal VS Code to re-query file decorations. */
+  refresh(): void {
+    this._onDidChangeFileDecorations.fire(undefined);
+  }
+
   async provideFileDecoration(
     uri: vscode.Uri,
     _token: vscode.CancellationToken

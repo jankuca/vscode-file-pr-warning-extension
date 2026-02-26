@@ -19,6 +19,7 @@ let prIndex: PRIndex;
 let codeLensProvider: PRCodeLensProvider;
 let lineHighlighter: LineHighlighter;
 let prTreeDataProvider: PRTreeDataProvider;
+let fileDecorationProvider: PRFileDecorationProvider;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Initialize git service
@@ -57,8 +58,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   // Register file decoration provider
+  fileDecorationProvider = new PRFileDecorationProvider(prIndex);
   context.subscriptions.push(
-    vscode.window.registerFileDecorationProvider(new PRFileDecorationProvider(prIndex))
+    vscode.window.registerFileDecorationProvider(fileDecorationProvider),
+    fileDecorationProvider,
   );
 
   // Freshness indicator — update tree view description with fetch age
@@ -130,6 +133,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         } else {
           lineHighlighter.updateActiveEditor();
         }
+      }
+
+      if (e.affectsConfiguration('filePrWarning.showFileBadge')) {
+        fileDecorationProvider.refresh();
       }
 
       if (e.affectsConfiguration('filePrWarning.excludeDraftPRs')) {
