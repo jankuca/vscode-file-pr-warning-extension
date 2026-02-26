@@ -2,7 +2,7 @@
   "name": "file-pr-warning",
   "displayName": "File PR Warning",
   "description": "Warns when a file you're editing is also modified by open GitHub PRs",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "jankuca",
   "license": "MIT",
   "engines": {
