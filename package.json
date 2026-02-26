@@ -20,11 +20,24 @@
         "category": "File PR Warning"
       },
       {
+        "command": "filePrWarning.showLinePRs",
+        "title": "Show PRs Modifying This Line",
+        "category": "File PR Warning"
+      },
+      {
         "command": "filePrWarning.refresh",
         "title": "Refresh PR Data",
         "category": "File PR Warning"
       }
     ],
+    "menus": {
+      "editor/lineNumber/context": [
+        {
+          "command": "filePrWarning.showLinePRs",
+          "when": "config.filePrWarning.enabled"
+        }
+      ]
+    },
     "configuration": {
       "title": "File PR Warning",
       "properties": {

@@ -8,6 +8,7 @@ export function registerCommands(
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('filePrWarning.showPRList', showPRList(prIndex)),
+    vscode.commands.registerCommand('filePrWarning.showLinePRs', showLinePRs(prIndex)),
     vscode.commands.registerCommand('filePrWarning.refresh', refresh(prIndex))
   );
 }
@@ -26,6 +27,44 @@ function showPRList(prIndex: PRIndex) {
     }
 
     const items = prs.map(pr => ({
+      label: `#${pr.number} ${pr.title}`,
+      description: `by @${pr.author}`,
+      detail: `Created ${timeAgo(pr.createdAt)} | Updated ${timeAgo(pr.updatedAt)}`,
+      pr,
+    }));
+
+    const selected = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select a PR to open in browser',
+    });
+
+    if (selected) {
+      vscode.env.openExternal(vscode.Uri.parse(selected.pr.url));
+    }
+  };
+}
+
+function showLinePRs(prIndex: PRIndex) {
+  return async (arg?: { lineNumber: number; uri: vscode.Uri }) => {
+    const editor = vscode.window.activeTextEditor;
+    // Context menu passes 1-based lineNumber; fallback to cursor position
+    const lineNumber = arg?.lineNumber ?? (editor ? editor.selection.active.line + 1 : undefined);
+    const fileUri = arg?.uri ?? editor?.document.uri;
+
+    if (!fileUri || !lineNumber) {
+      return;
+    }
+
+    const prLineData = await prIndex.getLineRangesForFile(fileUri);
+    const matchingPRs = prLineData
+      .filter(({ ranges }) => ranges.some(r => lineNumber >= r.startLine && lineNumber <= r.endLine))
+      .map(({ pr }) => pr);
+
+    if (matchingPRs.length === 0) {
+      vscode.window.showInformationMessage('No open PRs modify this line.');
+      return;
+    }
+
+    const items = matchingPRs.map(pr => ({
       label: `#${pr.number} ${pr.title}`,
       description: `by @${pr.author}`,
       detail: `Created ${timeAgo(pr.createdAt)} | Updated ${timeAgo(pr.updatedAt)}`,

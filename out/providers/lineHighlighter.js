@@ -81,6 +81,7 @@ class LineHighlighter {
                     existing.push({
                         prTitle: pr.title,
                         prNumber: pr.number,
+                        prUrl: pr.url,
                         author: pr.author,
                     });
                     lineMap.set(line, existing);
@@ -97,7 +98,7 @@ class LineHighlighter {
             const hover = new vscode.MarkdownString();
             hover.isTrusted = true;
             for (const pr of prs) {
-                hover.appendMarkdown(`Modified by PR [#${pr.prNumber}](command:filePrWarning.showPRList) **${pr.prTitle}** by @${pr.author}\n\n`);
+                hover.appendMarkdown(`Modified by PR [#${pr.prNumber} ${pr.prTitle}](${pr.prUrl}) by @${pr.author}\n\n`);
             }
             decorations.push({
                 range: new vscode.Range(lineIndex, 0, lineIndex, 0),
