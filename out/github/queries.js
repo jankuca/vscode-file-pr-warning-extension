@@ -19,6 +19,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
         title
         url
         isDraft
+        reviewDecision
         createdAt
         updatedAt
         headRefName

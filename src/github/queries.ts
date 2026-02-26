@@ -16,6 +16,7 @@ query($owner: String!, $repo: String!, $cursor: String) {
         title
         url
         isDraft
+        reviewDecision
         createdAt
         updatedAt
         headRefName
@@ -41,6 +42,7 @@ export interface GraphQLPRNode {
   title: string;
   url: string;
   isDraft: boolean;
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
   createdAt: string;
   updatedAt: string;
   headRefName: string;

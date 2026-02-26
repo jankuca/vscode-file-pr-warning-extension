@@ -11,6 +11,7 @@ export interface PRInfo {
   author: string;
   headRefName: string;
   isDraft: boolean;
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
   createdAt: string;
   updatedAt: string;
   files: string[];

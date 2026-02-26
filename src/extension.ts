@@ -5,6 +5,7 @@ import { GitHubClient } from './github/githubClient';
 import { PRIndex } from './core/prIndex';
 import { PRCodeLensProvider } from './providers/codeLensProvider';
 import { LineHighlighter } from './providers/lineHighlighter';
+import { PRTreeDataProvider } from './providers/prTreeDataProvider';
 import { registerCommands } from './commands/commands';
 
 let gitService: GitService;
@@ -13,6 +14,7 @@ let githubClient: GitHubClient;
 let prIndex: PRIndex;
 let codeLensProvider: PRCodeLensProvider;
 let lineHighlighter: LineHighlighter;
+let prTreeDataProvider: PRTreeDataProvider;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration('filePrWarning');
@@ -47,6 +49,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Initialize line highlighter
   lineHighlighter = new LineHighlighter(prIndex, context.extensionUri);
+
+  // Register Tree View
+  prTreeDataProvider = new PRTreeDataProvider(prIndex);
+  const treeView = vscode.window.createTreeView('filePrWarning.prListView', {
+    treeDataProvider: prTreeDataProvider,
+  });
+  context.subscriptions.push(
+    treeView,
+    prTreeDataProvider,
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+      if (editor?.document.uri.scheme === 'file') {
+        const fileName = editor.document.uri.path.split('/').pop() ?? '';
+        treeView.title = `Open PRs: ${fileName}`;
+      } else {
+        treeView.title = 'Open PRs';
+      }
+    }),
+    vscode.commands.registerCommand('filePrWarning.refreshTreeView', () => {
+      prIndex.forceRefresh();
+    }),
+  );
 
   // Start auto-refresh timer
   const refreshInterval = config.get<number>('refreshIntervalMinutes') ?? 10;

@@ -28,6 +28,27 @@
         "command": "filePrWarning.refresh",
         "title": "Refresh PR Data",
         "category": "File PR Warning"
+      },
+      {
+        "command": "filePrWarning.refreshTreeView",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "File PR Warning"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "filePrWarning.prListView",
+          "name": "Open PRs",
+          "when": "config.filePrWarning.enabled"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "filePrWarning.prListView",
+        "contents": "No open PRs modify this file.\n[Refresh](command:filePrWarning.refresh)"
       }
     ],
     "menus": {
@@ -35,6 +56,13 @@
         {
           "command": "filePrWarning.showLinePRs",
           "when": "config.filePrWarning.enabled"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "filePrWarning.refreshTreeView",
+          "when": "view == filePrWarning.prListView",
+          "group": "navigation"
         }
       ]
     },

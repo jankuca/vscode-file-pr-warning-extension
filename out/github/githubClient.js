@@ -132,6 +132,7 @@ class GitHubClient {
             author: node.author?.login ?? 'unknown',
             headRefName: node.headRefName,
             isDraft: node.isDraft,
+            reviewDecision: node.reviewDecision,
             createdAt: node.createdAt,
             updatedAt: node.updatedAt,
             files: node.files.nodes.map(f => f.path),
