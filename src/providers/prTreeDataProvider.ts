@@ -1,11 +1,17 @@
 import * as vscode from 'vscode';
 import { PRIndex } from '../core/prIndex';
-import { PRInfo } from '../core/types';
+import { LineRange, PRInfo } from '../core/types';
 import { getPRColor } from '../core/prColors';
 
 export class PRTreeItem extends vscode.TreeItem {
-  constructor(public readonly prInfo: PRInfo, lineRanges?: string) {
-    super(`#${prInfo.number} ${prInfo.title}`, vscode.TreeItemCollapsibleState.None);
+  constructor(public readonly prInfo: PRInfo, lineRanges?: string, isSelected?: boolean) {
+    const labelText = `#${prInfo.number} ${prInfo.title}`;
+    super(
+      isSelected
+        ? { label: labelText, highlights: [[0, labelText.length]] } as vscode.TreeItemLabel
+        : labelText,
+      vscode.TreeItemCollapsibleState.None,
+    );
 
     this.description = `@${prInfo.author}`;
 
@@ -48,13 +54,43 @@ export class PRTreeDataProvider implements vscode.TreeDataProvider<PRTreeItem>, 
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  private selectedLines = new Set<number>();
+  private selectionDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   private disposables: vscode.Disposable[] = [];
 
   constructor(private prIndex: PRIndex) {
     this.disposables.push(
       this.prIndex.onDidChangeData(() => this._onDidChangeTreeData.fire()),
-      vscode.window.onDidChangeActiveTextEditor(() => this._onDidChangeTreeData.fire()),
+      vscode.window.onDidChangeActiveTextEditor(() => {
+        this.selectedLines.clear();
+        this._onDidChangeTreeData.fire();
+      }),
+      vscode.window.onDidChangeTextEditorSelection(e => {
+        if (e.textEditor !== vscode.window.activeTextEditor) {
+          return;
+        }
+        clearTimeout(this.selectionDebounceTimer);
+        this.selectionDebounceTimer = setTimeout(() => {
+          this.updateSelectedLines(e.selections);
+        }, 150);
+      }),
     );
+  }
+
+  private updateSelectedLines(selections: readonly vscode.Selection[]): void {
+    const newLines = new Set<number>();
+    for (const sel of selections) {
+      for (let line = sel.start.line; line <= sel.end.line; line++) {
+        newLines.add(line + 1); // convert 0-based to 1-based
+      }
+    }
+
+    // Only refresh if the set of selected lines actually changed
+    if (setsEqual(this.selectedLines, newLines)) {
+      return;
+    }
+    this.selectedLines = newLines;
+    this._onDidChangeTreeData.fire();
   }
 
   getTreeItem(element: PRTreeItem): vscode.TreeItem {
@@ -79,20 +115,49 @@ export class PRTreeDataProvider implements vscode.TreeDataProvider<PRTreeItem>, 
 
     const lineData = await this.prIndex.getLineRangesForFile(uri);
     const lineDataByPR = new Map<number, string>();
+    const rangesByPR = new Map<number, LineRange[]>();
     for (const entry of lineData) {
       const rangeStr = entry.ranges
         .map(r => r.startLine === r.endLine ? `L${r.startLine}` : `L${r.startLine}-${r.endLine}`)
         .join(', ');
       lineDataByPR.set(entry.pr.number, rangeStr);
+      rangesByPR.set(entry.pr.number, entry.ranges);
     }
 
-    return prs.map(pr => new PRTreeItem(pr, lineDataByPR.get(pr.number)));
+    return prs.map(pr => {
+      const ranges = rangesByPR.get(pr.number) ?? [];
+      const isSelected = this.selectedLines.size > 0
+        && ranges.some(r => rangeOverlapsLines(r, this.selectedLines));
+      return new PRTreeItem(pr, lineDataByPR.get(pr.number), isSelected);
+    });
   }
 
   dispose(): void {
+    clearTimeout(this.selectionDebounceTimer);
     this._onDidChangeTreeData.dispose();
     for (const d of this.disposables) {
       d.dispose();
     }
   }
+}
+
+function rangeOverlapsLines(range: LineRange, lines: Set<number>): boolean {
+  for (let l = range.startLine; l <= range.endLine; l++) {
+    if (lines.has(l)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function setsEqual(a: Set<number>, b: Set<number>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const v of a) {
+    if (!b.has(v)) {
+      return false;
+    }
+  }
+  return true;
 }

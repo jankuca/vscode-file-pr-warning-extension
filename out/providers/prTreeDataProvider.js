@@ -38,8 +38,11 @@ const vscode = __importStar(require("vscode"));
 const prColors_1 = require("../core/prColors");
 class PRTreeItem extends vscode.TreeItem {
     prInfo;
-    constructor(prInfo, lineRanges) {
-        super(`#${prInfo.number} ${prInfo.title}`, vscode.TreeItemCollapsibleState.None);
+    constructor(prInfo, lineRanges, isSelected) {
+        const labelText = `#${prInfo.number} ${prInfo.title}`;
+        super(isSelected
+            ? { label: labelText, highlights: [[0, labelText.length]] }
+            : labelText, vscode.TreeItemCollapsibleState.None);
         this.prInfo = prInfo;
         this.description = `@${prInfo.author}`;
         const lines = [
@@ -75,10 +78,37 @@ class PRTreeDataProvider {
     prIndex;
     _onDidChangeTreeData = new vscode.EventEmitter();
     onDidChangeTreeData = this._onDidChangeTreeData.event;
+    selectedLines = new Set();
+    selectionDebounceTimer;
     disposables = [];
     constructor(prIndex) {
         this.prIndex = prIndex;
-        this.disposables.push(this.prIndex.onDidChangeData(() => this._onDidChangeTreeData.fire()), vscode.window.onDidChangeActiveTextEditor(() => this._onDidChangeTreeData.fire()));
+        this.disposables.push(this.prIndex.onDidChangeData(() => this._onDidChangeTreeData.fire()), vscode.window.onDidChangeActiveTextEditor(() => {
+            this.selectedLines.clear();
+            this._onDidChangeTreeData.fire();
+        }), vscode.window.onDidChangeTextEditorSelection(e => {
+            if (e.textEditor !== vscode.window.activeTextEditor) {
+                return;
+            }
+            clearTimeout(this.selectionDebounceTimer);
+            this.selectionDebounceTimer = setTimeout(() => {
+                this.updateSelectedLines(e.selections);
+            }, 150);
+        }));
+    }
+    updateSelectedLines(selections) {
+        const newLines = new Set();
+        for (const sel of selections) {
+            for (let line = sel.start.line; line <= sel.end.line; line++) {
+                newLines.add(line + 1); // convert 0-based to 1-based
+            }
+        }
+        // Only refresh if the set of selected lines actually changed
+        if (setsEqual(this.selectedLines, newLines)) {
+            return;
+        }
+        this.selectedLines = newLines;
+        this._onDidChangeTreeData.fire();
     }
     getTreeItem(element) {
         return element;
@@ -98,15 +128,23 @@ class PRTreeDataProvider {
         }
         const lineData = await this.prIndex.getLineRangesForFile(uri);
         const lineDataByPR = new Map();
+        const rangesByPR = new Map();
         for (const entry of lineData) {
             const rangeStr = entry.ranges
                 .map(r => r.startLine === r.endLine ? `L${r.startLine}` : `L${r.startLine}-${r.endLine}`)
                 .join(', ');
             lineDataByPR.set(entry.pr.number, rangeStr);
+            rangesByPR.set(entry.pr.number, entry.ranges);
         }
-        return prs.map(pr => new PRTreeItem(pr, lineDataByPR.get(pr.number)));
+        return prs.map(pr => {
+            const ranges = rangesByPR.get(pr.number) ?? [];
+            const isSelected = this.selectedLines.size > 0
+                && ranges.some(r => rangeOverlapsLines(r, this.selectedLines));
+            return new PRTreeItem(pr, lineDataByPR.get(pr.number), isSelected);
+        });
     }
     dispose() {
+        clearTimeout(this.selectionDebounceTimer);
         this._onDidChangeTreeData.dispose();
         for (const d of this.disposables) {
             d.dispose();
@@ -114,4 +152,23 @@ class PRTreeDataProvider {
     }
 }
 exports.PRTreeDataProvider = PRTreeDataProvider;
+function rangeOverlapsLines(range, lines) {
+    for (let l = range.startLine; l <= range.endLine; l++) {
+        if (lines.has(l)) {
+            return true;
+        }
+    }
+    return false;
+}
+function setsEqual(a, b) {
+    if (a.size !== b.size) {
+        return false;
+    }
+    for (const v of a) {
+        if (!b.has(v)) {
+            return false;
+        }
+    }
+    return true;
+}
 //# sourceMappingURL=prTreeDataProvider.js.map
