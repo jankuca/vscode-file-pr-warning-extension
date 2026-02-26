@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCommands = registerCommands;
 const crypto = __importStar(require("crypto"));
 const vscode = __importStar(require("vscode"));
+const timeAgo_1 = require("../core/timeAgo");
 function registerCommands(context, prIndex) {
     context.subscriptions.push(vscode.commands.registerCommand('filePrWarning.showPRList', showPRList(prIndex)), vscode.commands.registerCommand('filePrWarning.showLinePRs', showLinePRs(prIndex)), vscode.commands.registerCommand('filePrWarning.refresh', refresh(prIndex)));
 }
@@ -45,7 +46,15 @@ function showPRList(prIndex) {
         if (!fileUri) {
             return;
         }
-        const prs = await prIndex.getPRsForFile(fileUri);
+        let prs;
+        try {
+            prs = await prIndex.getPRsForFile(fileUri);
+        }
+        catch (e) {
+            console.error('filePrWarning: failed to fetch PRs for file', e);
+            vscode.window.showErrorMessage('File PR Warning: Failed to fetch PR data.');
+            return;
+        }
         if (prs.length === 0) {
             vscode.window.showInformationMessage('No open PRs modify this file.');
             return;
@@ -53,7 +62,7 @@ function showPRList(prIndex) {
         const items = prs.map(pr => ({
             label: `#${pr.number} ${pr.title}`,
             description: `by @${pr.author}`,
-            detail: `Created ${timeAgo(pr.createdAt)} | Updated ${timeAgo(pr.updatedAt)}`,
+            detail: `Created ${(0, timeAgo_1.timeAgo)(pr.createdAt)} | Updated ${(0, timeAgo_1.timeAgo)(pr.updatedAt)}`,
             pr,
         }));
         const selected = await vscode.window.showQuickPick(items, {
@@ -73,7 +82,15 @@ function showLinePRs(prIndex) {
         if (!fileUri || !lineNumber) {
             return;
         }
-        const prLineData = await prIndex.getLineRangesForFile(fileUri);
+        let prLineData;
+        try {
+            prLineData = await prIndex.getLineRangesForFile(fileUri);
+        }
+        catch (e) {
+            console.error('filePrWarning: failed to fetch line ranges', e);
+            vscode.window.showErrorMessage('File PR Warning: Failed to fetch PR data.');
+            return;
+        }
         const matchingPRs = prLineData
             .filter(({ ranges }) => ranges.some(r => lineNumber >= r.startLine && lineNumber <= r.endLine))
             .map(({ pr }) => pr);
@@ -88,7 +105,7 @@ function showLinePRs(prIndex) {
         const items = matchingPRs.map(pr => ({
             label: `#${pr.number} ${pr.title}`,
             description: `by @${pr.author}`,
-            detail: `Created ${timeAgo(pr.createdAt)} | Updated ${timeAgo(pr.updatedAt)}`,
+            detail: `Created ${(0, timeAgo_1.timeAgo)(pr.createdAt)} | Updated ${(0, timeAgo_1.timeAgo)(pr.updatedAt)}`,
             pr,
         }));
         const selected = await vscode.window.showQuickPick(items, {
@@ -106,35 +123,14 @@ function refresh(prIndex) {
             title: 'File PR Warning: Refreshing PR data...',
             cancellable: false,
         }, async () => {
-            await prIndex.forceRefresh();
+            try {
+                await prIndex.forceRefresh();
+            }
+            catch (e) {
+                console.error('filePrWarning: refresh failed', e);
+                vscode.window.showErrorMessage('File PR Warning: Refresh failed.');
+            }
         });
     };
-}
-function timeAgo(dateString) {
-    const date = new Date(dateString);
-    const now = Date.now();
-    const diffMs = now - date.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-    const diffWeek = Math.floor(diffDay / 7);
-    const diffMonth = Math.floor(diffDay / 30);
-    if (diffMonth > 0) {
-        return diffMonth === 1 ? '1 month ago' : `${diffMonth} months ago`;
-    }
-    if (diffWeek > 0) {
-        return diffWeek === 1 ? '1 week ago' : `${diffWeek} weeks ago`;
-    }
-    if (diffDay > 0) {
-        return diffDay === 1 ? '1 day ago' : `${diffDay} days ago`;
-    }
-    if (diffHour > 0) {
-        return diffHour === 1 ? '1 hour ago' : `${diffHour} hours ago`;
-    }
-    if (diffMin > 0) {
-        return diffMin === 1 ? '1 minute ago' : `${diffMin} minutes ago`;
-    }
-    return 'just now';
 }
 //# sourceMappingURL=commands.js.map

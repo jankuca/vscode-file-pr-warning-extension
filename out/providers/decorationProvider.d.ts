@@ -6,6 +6,8 @@ export declare class PRFileDecorationProvider implements vscode.FileDecorationPr
     readonly onDidChangeFileDecorations: vscode.Event<vscode.Uri | vscode.Uri[] | undefined>;
     private disposables;
     constructor(prIndex: PRIndex);
+    /** Signal VS Code to re-query file decorations. */
+    refresh(): void;
     provideFileDecoration(uri: vscode.Uri, _token: vscode.CancellationToken): Promise<vscode.FileDecoration | undefined>;
     dispose(): void;
 }

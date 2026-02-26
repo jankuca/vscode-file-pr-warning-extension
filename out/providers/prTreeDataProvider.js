@@ -122,11 +122,13 @@ class PRTreeDataProvider {
             return [];
         }
         const uri = editor.document.uri;
+        const lineData = await this.prIndex.getLineRangesForFile(uri);
+        // getLineRangesForFile internally calls getPRsForFile, so we also need
+        // the full PR list for files that have PRs but no line-level data yet.
         const prs = await this.prIndex.getPRsForFile(uri);
         if (prs.length === 0) {
             return [];
         }
-        const lineData = await this.prIndex.getLineRangesForFile(uri);
         const lineDataByPR = new Map();
         const rangesByPR = new Map();
         for (const entry of lineData) {

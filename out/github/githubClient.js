@@ -91,6 +91,9 @@ class GitHubClient {
             if (json.errors?.length) {
                 throw new Error(`GitHub GraphQL error: ${json.errors[0].message}`);
             }
+            if (!json.data.repository) {
+                throw new Error(`GitHub API: repository ${owner}/${repo} not found`);
+            }
             const data = json.data.repository.pullRequests;
             for (const node of data.nodes) {
                 prs.push(this.mapNodeToPR(node));
@@ -103,26 +106,35 @@ class GitHubClient {
         if (this.isRateLimited()) {
             return [];
         }
-        const url = `${GITHUB_API_URL}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`;
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/vnd.github.v3+json',
-            },
-        });
-        this.updateRateLimit(response.headers);
-        if (response.status === 401) {
-            throw new AuthError('GitHub token is invalid or expired');
+        const MAX_PAGES = 30;
+        let page = 1;
+        while (page <= MAX_PAGES) {
+            const url = `${GITHUB_API_URL}/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`;
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                },
+            });
+            this.updateRateLimit(response.headers);
+            if (response.status === 401) {
+                throw new AuthError('GitHub token is invalid or expired');
+            }
+            if (!response.ok) {
+                return [];
+            }
+            const files = (await response.json());
+            const file = files.find(f => f.filename === filePath);
+            if (file?.patch) {
+                return (0, diffParser_1.parsePatchToHunks)(file.patch);
+            }
+            // No more pages
+            if (files.length < 100) {
+                return [];
+            }
+            page++;
         }
-        if (!response.ok) {
-            return [];
-        }
-        const files = (await response.json());
-        const file = files.find(f => f.filename === filePath);
-        if (!file || !file.patch) {
-            return [];
-        }
-        return (0, diffParser_1.parsePatchToHunks)(file.patch);
+        return [];
     }
     mapNodeToPR(node) {
         return {

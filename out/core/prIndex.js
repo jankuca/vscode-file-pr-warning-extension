@@ -43,7 +43,7 @@ class PRIndex {
     githubClient;
     gitDiffService;
     cache = new Map();
-    fetchingPromise = null;
+    fetchingPromises = new Map();
     refreshTimer;
     disposables = [];
     _onDidChangeData = new vscode.EventEmitter();
@@ -65,9 +65,9 @@ class PRIndex {
     }
     startAutoRefresh(intervalMinutes) {
         this.stopAutoRefresh();
-        const ms = intervalMinutes * 60 * 1000;
+        const ms = Math.max(1, intervalMinutes) * 60 * 1000;
         this.refreshTimer = setInterval(() => {
-            this.refreshAll();
+            this.refreshAll().catch(() => { });
         }, ms);
     }
     stopAutoRefresh() {
@@ -75,6 +75,10 @@ class PRIndex {
             clearInterval(this.refreshTimer);
             this.refreshTimer = undefined;
         }
+    }
+    /** Signal that consumers should re-read data (e.g. after filter changes). */
+    invalidate() {
+        this._onDidChangeData.fire();
     }
     getRelativePath(uri) {
         return this.gitService.getRepoInfo(uri)?.relativePath ?? null;
@@ -193,9 +197,10 @@ class PRIndex {
     }
     async fetchForRepo(owner, repo, force = false) {
         const cacheKey = `${owner}/${repo}`;
-        // Concurrency guard
-        if (this.fetchingPromise && !force) {
-            await this.fetchingPromise;
+        // Concurrency guard (per-repo)
+        const inflight = this.fetchingPromises.get(cacheKey);
+        if (inflight && !force) {
+            await inflight;
             return;
         }
         const doFetch = async () => {
@@ -205,28 +210,7 @@ class PRIndex {
             }
             try {
                 const prs = await this.githubClient.fetchOpenPRs(owner, repo, token);
-                // Build file index
-                const fileIndex = new Map();
-                for (const pr of prs) {
-                    for (const filePath of pr.files) {
-                        const existing = fileIndex.get(filePath) ?? [];
-                        existing.push(pr);
-                        fileIndex.set(filePath, existing);
-                    }
-                }
-                // Preserve existing diff hunk cache if possible
-                const existingEntry = this.cache.get(cacheKey);
-                this.cache.set(cacheKey, {
-                    prs,
-                    fileIndex,
-                    fetchedAt: Date.now(),
-                    diffHunkCache: existingEntry?.diffHunkCache ?? new Map(),
-                });
-                this.lastFetchedAt = Date.now();
-                this.lastFetchError = false;
-                this._onDidChangeData.fire();
-                // Eagerly fetch all PR branches in the background
-                this.eagerFetchBranches(prs);
+                this.buildAndCacheResult(cacheKey, prs);
             }
             catch (e) {
                 if (e instanceof githubClient_1.AuthError) {
@@ -235,24 +219,7 @@ class PRIndex {
                     if (newToken) {
                         try {
                             const prs = await this.githubClient.fetchOpenPRs(owner, repo, newToken);
-                            const fileIndex = new Map();
-                            for (const pr of prs) {
-                                for (const filePath of pr.files) {
-                                    const existing = fileIndex.get(filePath) ?? [];
-                                    existing.push(pr);
-                                    fileIndex.set(filePath, existing);
-                                }
-                            }
-                            this.cache.set(cacheKey, {
-                                prs,
-                                fileIndex,
-                                fetchedAt: Date.now(),
-                                diffHunkCache: new Map(),
-                            });
-                            this.lastFetchedAt = Date.now();
-                            this.lastFetchError = false;
-                            this._onDidChangeData.fire();
-                            this.eagerFetchBranches(prs);
+                            this.buildAndCacheResult(cacheKey, prs);
                             return;
                         }
                         catch {
@@ -267,58 +234,79 @@ class PRIndex {
                 // Network errors or other failures — keep stale cache
             }
         };
-        this.fetchingPromise = doFetch();
+        const promise = doFetch();
+        this.fetchingPromises.set(cacheKey, promise);
         try {
-            await this.fetchingPromise;
+            await promise;
         }
         finally {
-            this.fetchingPromise = null;
+            // Only remove if this is still the current promise (avoid race with force refreshes)
+            if (this.fetchingPromises.get(cacheKey) === promise) {
+                this.fetchingPromises.delete(cacheKey);
+            }
         }
     }
-    /** Fire-and-forget: fetch all PR branches so they're ready when files are opened. */
-    eagerFetchBranches(prs) {
-        // Collect unique branch names and find a repo root to use
-        const branches = new Set();
+    buildAndCacheResult(cacheKey, prs) {
+        const fileIndex = new Map();
         for (const pr of prs) {
-            branches.add(pr.headRefName);
+            for (const filePath of pr.files) {
+                const existing = fileIndex.get(filePath) ?? [];
+                existing.push(pr);
+                fileIndex.set(filePath, existing);
+            }
         }
-        // Find a repo root from any cached entry (we need it for git operations)
-        let repoRoot = null;
-        let originUrl = null;
-        for (const entry of this.cache.values()) {
-            for (const pr of entry.prs) {
-                if (branches.has(pr.headRefName)) {
-                    // Use the first PR's repo root we can find
-                    for (const repo of this.cache.keys()) {
-                        const [owner, repoName] = repo.split('/');
-                        // Find a workspace folder that matches this repo
-                        for (const folder of vscode.workspace.workspaceFolders ?? []) {
-                            const info = this.gitService.getRepoInfo(folder.uri);
-                            if (info && info.owner === owner && info.repo === repoName) {
-                                repoRoot = info.rootUri;
-                                originUrl = this.gitService.getOriginUrl(info.rootUri);
-                                break;
-                            }
-                        }
-                        if (repoRoot) {
-                            break;
-                        }
-                    }
-                    break;
+        // Prune stale diffHunkCache entries for files no longer in any PR
+        const existingCache = this.cache.get(cacheKey)?.diffHunkCache;
+        let diffHunkCache;
+        if (existingCache) {
+            diffHunkCache = new Map();
+            for (const [filePath, hunks] of existingCache) {
+                if (fileIndex.has(filePath)) {
+                    diffHunkCache.set(filePath, hunks);
                 }
             }
-            if (repoRoot) {
+        }
+        else {
+            diffHunkCache = new Map();
+        }
+        this.cache.set(cacheKey, {
+            prs,
+            fileIndex,
+            fetchedAt: Date.now(),
+            diffHunkCache,
+        });
+        this.lastFetchedAt = Date.now();
+        this.lastFetchError = false;
+        this._onDidChangeData.fire();
+        this.eagerFetchBranches(cacheKey);
+    }
+    /** Fire-and-forget: fetch all PR branches so they're ready when files are opened. */
+    eagerFetchBranches(cacheKey) {
+        const entry = this.cache.get(cacheKey);
+        if (!entry) {
+            return;
+        }
+        const [owner, repoName] = cacheKey.split('/');
+        // Find the workspace folder that matches this repo
+        let repoRoot = null;
+        let originUrl = null;
+        for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            const info = this.gitService.getRepoInfo(folder.uri);
+            if (info && info.owner === owner && info.repo === repoName) {
+                repoRoot = info.rootUri;
+                originUrl = this.gitService.getOriginUrl(info.rootUri);
                 break;
             }
         }
         if (!repoRoot || !originUrl) {
             return;
         }
-        const root = repoRoot;
-        const url = originUrl;
+        const branches = new Set();
+        for (const pr of entry.prs) {
+            branches.add(pr.headRefName);
+        }
         for (const branch of branches) {
-            // Fire and forget — errors are handled inside fetchBranch
-            this.gitDiffService.fetchBranch(root, url, branch).catch(() => { });
+            this.gitDiffService.fetchBranch(repoRoot, originUrl, branch).catch(() => { });
         }
     }
     dispose() {

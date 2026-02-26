@@ -46,6 +46,10 @@ class PRFileDecorationProvider {
             this._onDidChangeFileDecorations.fire(undefined);
         }));
     }
+    /** Signal VS Code to re-query file decorations. */
+    refresh() {
+        this._onDidChangeFileDecorations.fire(undefined);
+    }
     async provideFileDecoration(uri, _token) {
         if (uri.scheme !== 'file') {
             return undefined;

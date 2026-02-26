@@ -6,6 +6,8 @@ export declare class PRCodeLensProvider implements vscode.CodeLensProvider {
     readonly onDidChangeCodeLenses: vscode.Event<void>;
     private disposables;
     constructor(prIndex: PRIndex);
+    /** Signal VS Code to re-evaluate code lenses. */
+    refresh(): void;
     provideCodeLenses(document: vscode.TextDocument, _token: vscode.CancellationToken): Promise<vscode.CodeLens[]>;
     dispose(): void;
 }

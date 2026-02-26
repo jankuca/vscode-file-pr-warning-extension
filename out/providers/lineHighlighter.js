@@ -81,7 +81,15 @@ class LineHighlighter {
             this.clearDecorations();
             return;
         }
-        const prLineData = await this.prIndex.getLineRangesForFile(editor.document.uri);
+        let prLineData;
+        try {
+            prLineData = await this.prIndex.getLineRangesForFile(editor.document.uri);
+        }
+        catch (e) {
+            console.error('filePrWarning: getLineRangesForFile failed', e);
+            this.clearDecorations();
+            return;
+        }
         if (prLineData.length === 0) {
             this.clearDecorations();
             return;
@@ -108,9 +116,12 @@ class LineHighlighter {
             const widthLevel = Math.min(prs.length, 4);
             const key = makeKey(color, widthLevel);
             const hover = new vscode.MarkdownString();
-            hover.isTrusted = true;
             for (const pr of prs) {
-                hover.appendMarkdown(`Modified by PR [#${pr.number} ${pr.title}](${pr.url}) by @${pr.author}\n\n`);
+                hover.appendMarkdown(`Modified by PR [#${pr.number} `);
+                hover.appendText(pr.title);
+                hover.appendMarkdown(`](${pr.url}) by @`);
+                hover.appendText(pr.author);
+                hover.appendMarkdown('\n\n');
             }
             const deco = {
                 range: new vscode.Range(lineIndex, 0, lineIndex, 0),

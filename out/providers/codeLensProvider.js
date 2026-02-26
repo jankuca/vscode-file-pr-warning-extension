@@ -46,12 +46,23 @@ class PRCodeLensProvider {
             this._onDidChangeCodeLenses.fire();
         }));
     }
+    /** Signal VS Code to re-evaluate code lenses. */
+    refresh() {
+        this._onDidChangeCodeLenses.fire();
+    }
     async provideCodeLenses(document, _token) {
         const config = vscode.workspace.getConfiguration('filePrWarning');
         if (!config.get('enabled') || !config.get('showCodeLens')) {
             return [];
         }
-        const prs = await this.prIndex.getPRsForFile(document.uri);
+        let prs;
+        try {
+            prs = await this.prIndex.getPRsForFile(document.uri);
+        }
+        catch (e) {
+            console.error('filePrWarning: CodeLens getPRsForFile failed', e);
+            return [];
+        }
         if (prs.length === 0) {
             return [];
         }

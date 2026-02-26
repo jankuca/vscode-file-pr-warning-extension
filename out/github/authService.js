@@ -38,6 +38,7 @@ const vscode = __importStar(require("vscode"));
 class AuthService {
     session = null;
     firstCall = true;
+    tokenRequest = null;
     disposables = [];
     constructor() {
         this.disposables.push(vscode.authentication.onDidChangeSessions(e => {
@@ -52,6 +53,19 @@ class AuthService {
         if (this.session) {
             return this.session.accessToken;
         }
+        // Coalesce concurrent calls into a single auth request
+        if (this.tokenRequest) {
+            return this.tokenRequest;
+        }
+        this.tokenRequest = this.doGetToken();
+        try {
+            return await this.tokenRequest;
+        }
+        finally {
+            this.tokenRequest = null;
+        }
+    }
+    async doGetToken() {
         try {
             const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: this.firstCall, silent: !this.firstCall });
             this.firstCall = false;
@@ -61,7 +75,8 @@ class AuthService {
             this.session = session;
             return session.accessToken;
         }
-        catch {
+        catch (err) {
+            console.error('filePrWarning: failed to acquire GitHub token', err);
             this.firstCall = false;
             return null;
         }

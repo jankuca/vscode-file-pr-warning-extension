@@ -44,7 +44,9 @@ const prIndex_1 = require("./core/prIndex");
 const codeLensProvider_1 = require("./providers/codeLensProvider");
 const lineHighlighter_1 = require("./providers/lineHighlighter");
 const prTreeDataProvider_1 = require("./providers/prTreeDataProvider");
+const decorationProvider_1 = require("./providers/decorationProvider");
 const commands_1 = require("./commands/commands");
+const timeAgo_1 = require("./core/timeAgo");
 let gitService;
 let gitDiffService;
 let authService;
@@ -53,11 +55,8 @@ let prIndex;
 let codeLensProvider;
 let lineHighlighter;
 let prTreeDataProvider;
+let fileDecorationProvider;
 async function activate(context) {
-    const config = vscode.workspace.getConfiguration('filePrWarning');
-    if (!config.get('enabled')) {
-        return;
-    }
     // Initialize git service
     gitService = new gitService_1.GitService();
     const gitReady = await gitService.initialize();
@@ -82,13 +81,16 @@ async function activate(context) {
     const treeView = vscode.window.createTreeView('filePrWarning.prListView', {
         treeDataProvider: prTreeDataProvider,
     });
+    // Register file decoration provider
+    fileDecorationProvider = new decorationProvider_1.PRFileDecorationProvider(prIndex);
+    context.subscriptions.push(vscode.window.registerFileDecorationProvider(fileDecorationProvider), fileDecorationProvider);
     // Freshness indicator — update tree view description with fetch age
     function updateFreshnessIndicator() {
         if (prIndex.lastFetchError || gitDiffService.lastRemoteFetchError) {
             treeView.description = '\u26A0 Fetch failed';
         }
         else if (prIndex.lastFetchedAt) {
-            treeView.description = `Fetched ${timeAgo(prIndex.lastFetchedAt)}`;
+            treeView.description = `Fetched ${(0, timeAgo_1.timeAgo)(prIndex.lastFetchedAt)}`;
         }
         else {
             treeView.description = undefined;
@@ -103,12 +105,20 @@ async function activate(context) {
         else {
             treeView.title = 'Open PRs';
         }
-    }), vscode.commands.registerCommand('filePrWarning.refreshTreeView', () => {
-        prIndex.forceRefresh();
+    }), vscode.commands.registerCommand('filePrWarning.refreshTreeView', async () => {
+        try {
+            await prIndex.forceRefresh();
+        }
+        catch (e) {
+            console.error('filePrWarning: refresh failed', e);
+        }
     }), { dispose: () => clearInterval(freshnessTimer) });
-    // Start auto-refresh timer
-    const refreshInterval = config.get('refreshIntervalMinutes') ?? 10;
-    prIndex.startAutoRefresh(refreshInterval);
+    // Start auto-refresh if enabled
+    const config = vscode.workspace.getConfiguration('filePrWarning');
+    if (config.get('enabled')) {
+        const refreshInterval = config.get('refreshIntervalMinutes') ?? 10;
+        prIndex.startAutoRefresh(refreshInterval);
+    }
     // React to configuration changes
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
         if (!e.affectsConfiguration('filePrWarning')) {
@@ -116,12 +126,14 @@ async function activate(context) {
         }
         const updatedConfig = vscode.workspace.getConfiguration('filePrWarning');
         if (e.affectsConfiguration('filePrWarning.refreshIntervalMinutes')) {
-            const interval = updatedConfig.get('refreshIntervalMinutes') ?? 10;
-            prIndex.startAutoRefresh(interval);
+            if (updatedConfig.get('enabled')) {
+                const interval = updatedConfig.get('refreshIntervalMinutes') ?? 10;
+                prIndex.startAutoRefresh(interval);
+            }
         }
         if (e.affectsConfiguration('filePrWarning.showCodeLens')) {
             // CodeLens provider will re-evaluate on next request
-            codeLensProvider['_onDidChangeCodeLenses'].fire();
+            codeLensProvider.refresh();
         }
         if (e.affectsConfiguration('filePrWarning.showLineHighlights')) {
             if (!updatedConfig.get('showLineHighlights')) {
@@ -131,50 +143,42 @@ async function activate(context) {
                 lineHighlighter.updateActiveEditor();
             }
         }
+        if (e.affectsConfiguration('filePrWarning.showFileBadge')) {
+            fileDecorationProvider.refresh();
+        }
         if (e.affectsConfiguration('filePrWarning.excludeDraftPRs')) {
             // Data needs re-filtering
-            prIndex['_onDidChangeData'].fire();
+            prIndex.invalidate();
         }
         if (e.affectsConfiguration('filePrWarning.enabled')) {
             if (!updatedConfig.get('enabled')) {
                 // Disable everything
                 prIndex.stopAutoRefresh();
                 lineHighlighter.clearDecorations();
-                codeLensProvider['_onDidChangeCodeLenses'].fire();
+                codeLensProvider.refresh();
             }
             else {
                 // Re-enable
                 const interval = updatedConfig.get('refreshIntervalMinutes') ?? 10;
                 prIndex.startAutoRefresh(interval);
-                prIndex['_onDidChangeData'].fire();
+                prIndex.invalidate();
+                lineHighlighter.updateActiveEditor();
             }
         }
     }));
-    // Trigger initial fetch for the active editor
-    if (vscode.window.activeTextEditor) {
-        prIndex.getPRsForFile(vscode.window.activeTextEditor.document.uri);
+    // Trigger initial fetch for the active editor (if enabled)
+    if (config.get('enabled') && vscode.window.activeTextEditor) {
+        prIndex.getPRsForFile(vscode.window.activeTextEditor.document.uri).catch(() => { });
     }
     // Fetch when files are opened
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor?.document.uri.scheme === 'file') {
-            prIndex.getPRsForFile(editor.document.uri);
+        const enabled = vscode.workspace.getConfiguration('filePrWarning').get('enabled');
+        if (enabled && editor?.document.uri.scheme === 'file') {
+            prIndex.getPRsForFile(editor.document.uri).catch(() => { });
         }
     }));
     // Register disposables
     context.subscriptions.push(gitService, gitDiffService, authService, prIndex, codeLensProvider, lineHighlighter);
-}
-function timeAgo(timestamp) {
-    const diffMs = Date.now() - timestamp;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour > 0) {
-        return diffHour === 1 ? '1 hour ago' : `${diffHour} hours ago`;
-    }
-    if (diffMin > 0) {
-        return diffMin === 1 ? '1 min ago' : `${diffMin} min ago`;
-    }
-    return 'just now';
 }
 function deactivate() {
     // Cleanup is handled by disposables registered in context.subscriptions
