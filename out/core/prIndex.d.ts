@@ -16,6 +16,7 @@ export declare class PRIndex implements vscode.Disposable {
     constructor(gitService: GitService, authService: AuthService, githubClient: GitHubClient);
     startAutoRefresh(intervalMinutes: number): void;
     stopAutoRefresh(): void;
+    getRelativePath(uri: vscode.Uri): string | null;
     getPRsForFile(uri: vscode.Uri): Promise<PRInfo[]>;
     getLineRangesForFile(uri: vscode.Uri): Promise<PRLineData[]>;
     refreshAll(): Promise<void>;

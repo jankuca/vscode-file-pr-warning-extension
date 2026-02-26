@@ -68,6 +68,9 @@ class PRIndex {
             this.refreshTimer = undefined;
         }
     }
+    getRelativePath(uri) {
+        return this.gitService.getRepoInfo(uri)?.relativePath ?? null;
+    }
     async getPRsForFile(uri) {
         const info = this.gitService.getRepoInfo(uri);
         if (!info) {

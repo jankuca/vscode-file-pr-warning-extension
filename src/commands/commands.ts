@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { PRIndex } from '../core/prIndex';
 import { PRInfo } from '../core/types';
@@ -64,6 +65,11 @@ function showLinePRs(prIndex: PRIndex) {
       return;
     }
 
+    const relativePath = prIndex.getRelativePath(fileUri);
+    const diffAnchor = relativePath
+      ? `#diff-${crypto.createHash('sha256').update(relativePath).digest('hex')}R${lineNumber}`
+      : '';
+
     const items = matchingPRs.map(pr => ({
       label: `#${pr.number} ${pr.title}`,
       description: `by @${pr.author}`,
@@ -72,11 +78,11 @@ function showLinePRs(prIndex: PRIndex) {
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select a PR to open in browser',
+      placeHolder: 'Select a PR to open in diff',
     });
 
     if (selected) {
-      vscode.env.openExternal(vscode.Uri.parse(selected.pr.url));
+      vscode.env.openExternal(vscode.Uri.parse(`${selected.pr.url}/files${diffAnchor}`));
     }
   };
 }

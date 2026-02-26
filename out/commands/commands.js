@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCommands = registerCommands;
+const crypto = __importStar(require("crypto"));
 const vscode = __importStar(require("vscode"));
 function registerCommands(context, prIndex) {
     context.subscriptions.push(vscode.commands.registerCommand('filePrWarning.showPRList', showPRList(prIndex)), vscode.commands.registerCommand('filePrWarning.showLinePRs', showLinePRs(prIndex)), vscode.commands.registerCommand('filePrWarning.refresh', refresh(prIndex)));
@@ -80,6 +81,10 @@ function showLinePRs(prIndex) {
             vscode.window.showInformationMessage('No open PRs modify this line.');
             return;
         }
+        const relativePath = prIndex.getRelativePath(fileUri);
+        const diffAnchor = relativePath
+            ? `#diff-${crypto.createHash('sha256').update(relativePath).digest('hex')}R${lineNumber}`
+            : '';
         const items = matchingPRs.map(pr => ({
             label: `#${pr.number} ${pr.title}`,
             description: `by @${pr.author}`,
@@ -87,10 +92,10 @@ function showLinePRs(prIndex) {
             pr,
         }));
         const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Select a PR to open in browser',
+            placeHolder: 'Select a PR to open in diff',
         });
         if (selected) {
-            vscode.env.openExternal(vscode.Uri.parse(selected.pr.url));
+            vscode.env.openExternal(vscode.Uri.parse(`${selected.pr.url}/files${diffAnchor}`));
         }
     };
 }

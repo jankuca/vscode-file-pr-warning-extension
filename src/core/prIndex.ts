@@ -41,6 +41,10 @@ export class PRIndex implements vscode.Disposable {
     }
   }
 
+  getRelativePath(uri: vscode.Uri): string | null {
+    return this.gitService.getRepoInfo(uri)?.relativePath ?? null;
+  }
+
   async getPRsForFile(uri: vscode.Uri): Promise<PRInfo[]> {
     const info = this.gitService.getRepoInfo(uri);
     if (!info) {
