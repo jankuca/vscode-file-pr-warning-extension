@@ -1,0 +1,98 @@
+{
+  "name": "file-pr-warning",
+  "displayName": "File PR Warning",
+  "description": "Warns when a file you're editing is also modified by open GitHub PRs",
+  "version": "0.0.1",
+  "publisher": "jankuca",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "extensionDependencies": ["vscode.git"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "filePrWarning.showPRList",
+        "title": "Show PRs Modifying This File",
+        "category": "File PR Warning"
+      },
+      {
+        "command": "filePrWarning.refresh",
+        "title": "Refresh PR Data",
+        "category": "File PR Warning"
+      }
+    ],
+    "configuration": {
+      "title": "File PR Warning",
+      "properties": {
+        "filePrWarning.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable the extension"
+        },
+        "filePrWarning.refreshIntervalMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Auto-refresh interval in minutes"
+        },
+        "filePrWarning.showCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CodeLens above line 1"
+        },
+        "filePrWarning.showFileBadge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show PR count badge on tabs and Explorer"
+        },
+        "filePrWarning.showLineHighlights": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show line-level gutter icons and background highlights"
+        },
+        "filePrWarning.excludeDraftPRs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide draft PRs from results"
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "filePrWarning.lineHighlightBackground",
+        "description": "Background color for lines modified by other PRs",
+        "defaults": {
+          "dark": "#ff980020",
+          "light": "#ff980020",
+          "highContrast": "#ff980040",
+          "highContrastLight": "#ff980040"
+        }
+      },
+      {
+        "id": "filePrWarning.lineHighlightBorder",
+        "description": "Border color for lines modified by other PRs",
+        "defaults": {
+          "dark": "#ff980060",
+          "light": "#ff980060",
+          "highContrast": "#ff9800",
+          "highContrastLight": "#ff9800"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
